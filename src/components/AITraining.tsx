@@ -55,7 +55,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
     const HEX_INPUTS = (3 * focalRadius * (focalRadius + 1) + 1) + 
                       (3 * selfRadius * (selfRadius + 1) + 1) + 
                       (3 * memoryRadius * (memoryRadius + 1) + 1) * 4;
-    const INPUT_NODES = HEX_INPUTS + 3 + 12;
+    const INPUT_NODES = HEX_INPUTS + 4 + 12;
     const OUTPUT_NODES = HEX_INPUTS;
 
     const model = createModel({
@@ -82,7 +82,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
     const meta: ModelMetadata = {
       name,
       timestamp: Date.now(),
-      inputNodes: HEX_INPUTS + 3 + 12,
+      inputNodes: HEX_INPUTS + 4 + 12,
       outputNodes: HEX_INPUTS,
       hiddenLayers: layers
     };
