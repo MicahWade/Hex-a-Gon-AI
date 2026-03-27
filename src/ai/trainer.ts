@@ -32,26 +32,30 @@ export class Trainer {
   }
 
   /**
-   * Performs one turn of self-play (2 moves) and returns the moves made.
+   * Performs one turn of play (2 moves) using a specific model.
    */
-  async selfPlayTurn(
+  async playTurn(
     board: BoardState,
     player: Player,
     foci: Coord[],
     radii: any,
-    config: TrainingConfig
-  ): Promise<{ board: BoardState; moves: Coord[]; winner: Player | null }> {
+    config: TrainingConfig,
+    specificModel?: tf.LayersModel
+  ): Promise<{ board: BoardState; moves: Coord[]; winner: Player | null; actionIndices: number[] }> {
     const moves: Coord[] = [];
+    const actionIndices: number[] = [];
     let currentBoard = new Map(board);
     let winner: Player | null = null;
+    const modelToUse = specificModel || this.model;
 
-    // AI makes 2 sequential moves
-    for (let i = 0; i < (board.size === 0 ? 1 : 2); i++) {
+    // AI makes sequential moves
+    const moveCount = board.size === 0 ? 1 : 2;
+    for (let i = 0; i < moveCount; i++) {
       const state = encodeState(currentBoard, player, foci, radii);
-      const action = await this.predictAction(state, config.epsilon);
+      const action = await this.predictAction(state, config.epsilon, modelToUse);
       const move = decodeMove(action, foci, radii);
 
-      // Execute move
+      actionIndices.push(action);
       const key = coordToString(move);
       if (!currentBoard.has(key)) {
         currentBoard.set(key, player);
@@ -64,19 +68,18 @@ export class Trainer {
       }
     }
 
-    return { board: currentBoard, moves, winner };
+    return { board: currentBoard, moves, winner, actionIndices };
   }
 
-  private async predictAction(state: number[], epsilon: number): Promise<number> {
+  private async predictAction(state: number[], epsilon: number, modelOverride?: tf.LayersModel): Promise<number> {
     if (Math.random() < epsilon) {
-      // Exploration: Random move within the vision pool
       return Math.floor(Math.random() * state.length);
     }
 
-    // Exploitation: Model prediction
+    const model = modelOverride || this.model;
     return tf.tidy(() => {
       const input = tf.tensor2d([state]);
-      const prediction = this.model.predict(input) as tf.Tensor;
+      const prediction = model.predict(input) as tf.Tensor;
       return prediction.argMax(1).dataSync()[0];
     });
   }
