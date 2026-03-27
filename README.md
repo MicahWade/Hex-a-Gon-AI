@@ -1,73 +1,60 @@
-# React + TypeScript + Vite
+# Hex-A-Gon
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A strategic, infinite-grid hexagonal "6-in-a-row" game built with React, TypeScript, and HTML5 Canvas.
 
-Currently, two official plugins are available:
+## 🎮 Game Rules
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Hex-A-Gon is a variation of connection games played on an infinite hexagonal grid with unique turn-based mechanics:
 
-## React Compiler
+- **Objective**: Be the first player to connect **six** hexagons in a straight line along any of the three axes.
+- **Asymmetric Opening**: 
+  - **Turn 1**: Player 1 places **one** piece.
+  - **Turn 2+**: Every subsequent turn, the active player places **two** pieces consecutively.
+- **Infinite Board**: There are no boundaries. The game expands in any direction as players place their pieces.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🚀 Features
 
-## Expanding the ESLint configuration
+- **Infinite Canvas**: Drag to pan and scroll to zoom. The board scales with your strategy.
+- **Axial Coordinate System**: Precise hexagonal math ensuring perfect placement and win detection.
+- **Responsive UI**: Real-time turn tracking and move counters.
+- **Performance**: Optimized Canvas rendering with viewport culling.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🛠️ Technical Stack
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- **Framework**: [React 19](https://react.dev/)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Build Tool**: [Vite](https://vite.dev/)
+- **Rendering**: HTML5 Canvas API
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 📦 Installation & Setup
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+1. **Clone the repository**:
+   ```bash
+   git clone git@github.com:MicahWade/Hex-a-Gon-AI.git
+   cd Hex-a-Gon-AI
+   ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+3. **Start the development server**:
+   ```bash
+   npm run dev
+   ```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+4. **Build for production**:
+   ```bash
+   npm run build
+   ```
+
+## 🕹️ Controls
+
+- **Left Click**: Place a piece on an empty hex.
+- **Left Click + Drag**: Pan around the infinite board.
+- **Mouse Wheel**: Zoom in and out.
+- **Right Click**: Disabled (to prevent context menu interference).
+
+---
+Developed as a high-performance, strategic playground for hexagonal grid logic.
