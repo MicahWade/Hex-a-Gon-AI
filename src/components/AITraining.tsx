@@ -72,7 +72,6 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
     if (!modelRef.current) return;
     const name = prompt("Enter model name:", currentModelName) || currentModelName;
     
-    // Metadata for verification
     const focalRadius = 14;
     const selfRadius = 8;
     const memoryRadius = 6;
@@ -128,14 +127,12 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
         learningRate: 0.001,
         batchSize: 32,
         gamma: 0.95,
-        epsilon: 0, // No randomness for champ matches
+        epsilon: 0,
         rewards
       };
       const radii = { global: 14, self: 8, memory: 6 };
 
-      // 10 Games total, 5 as P1, 5 as P2
       for (let g = 0; g < 10; g++) {
-
         let board: BoardState = new Map();
         let currentPlayer: Player = 1;
         let winner: Player | null = null;
@@ -166,7 +163,6 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
     setIsChampionship(false);
   };
 
-  // Training Loop Effect
   useEffect(() => {
     let active = true;
     if (!isTraining || !trainerRef.current) return;
@@ -198,7 +194,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
     };
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards]);
+  }, [isTraining, rewards, maxTurns]);
 
   return (
     <div className="tab-content ai-view">
@@ -208,6 +204,41 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
           <span className="model-badge">Active Model: {currentModelName}</span>
         </div>
       </div>
+
+      {/* TOP BAR CONTROLS */}
+      <section className="ai-top-bar card">
+        <div className="top-bar-layout">
+          <div className="control-section">
+            <div className="mini-input-row">
+              <label>Max Turns</label>
+              <input type="number" value={maxTurns} onChange={e => setMaxTurns(parseInt(e.target.value))} min="10" max="500" />
+            </div>
+            <div className="action-buttons">
+              <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={() => setIsTraining(!isTraining)}>
+                {isTraining ? 'Stop Training' : 'Start Training'}
+              </button>
+              <button className="reset-btn" onClick={handleSave}>Save to Vault</button>
+              <button 
+                className="recommend-btn" 
+                onClick={runChampionship}
+                disabled={isTraining || isChampionship}
+              >
+                {isChampionship ? 'Match...' : 'Championship'}
+              </button>
+            </div>
+          </div>
+
+          <div className="stats-section">
+            <div className="stat-pill"><span>Gen</span> <strong>{generations}</strong></div>
+            <div className="stat-pill"><span>Loss</span> <strong>{loss.toFixed(4)}</strong></div>
+            {champResults && (
+              <div className="champ-pill">
+                <span>Champ</span> <strong>{champResults.p1} - {champResults.p2}</strong>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
       
       <div className="ai-grid">
         <div className="ai-main-col">
@@ -230,28 +261,23 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
             </div>
             <button className="add-layer-btn" style={{marginTop: '15px'}} onClick={handleCreateNew}>Initialize New Model</button>
           </section>
+        </div>
 
-          <section className="training-log card">
-            <h3>System Logs</h3>
-            <div className="log-window">
-              {logs.map((log, i) => <p key={i}>{log}</p>)}
-            </div>
-          </section>
-
+        <div className="ai-side-col">
           <section className="reward-config card">
             <h3>Reward System</h3>
             <p className="section-desc">Adjust training incentives.</p>
             <div className="reward-grid">
               <div className="input-group">
-                <label>Win P1/P2</label>
-                <div style={{display: 'flex', gap: '10px'}}>
+                <label>Win P1 / P2</label>
+                <div className="dual-input">
                   <input type="number" value={rewards.p1Win} step={0.1} onChange={e => setRewards({...rewards, p1Win: parseFloat(e.target.value)})} />
                   <input type="number" value={rewards.p2Win} step={0.1} onChange={e => setRewards({...rewards, p2Win: parseFloat(e.target.value)})} />
                 </div>
               </div>
               <div className="input-group">
-                <label>Draw P1/P2</label>
-                <div style={{display: 'flex', gap: '10px'}}>
+                <label>Draw P1 / P2</label>
+                <div className="dual-input">
                   <input type="number" value={rewards.p1Draw} step={0.1} onChange={e => setRewards({...rewards, p1Draw: parseFloat(e.target.value)})} />
                   <input type="number" value={rewards.p2Draw} step={0.1} onChange={e => setRewards({...rewards, p2Draw: parseFloat(e.target.value)})} />
                 </div>
@@ -267,47 +293,14 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
             </div>
           </section>
         </div>
-
-        <div className="ai-side-col">
-          <section className="training-stats card">
-            <h3>Controls</h3>
-            <div className="mini-input" style={{ marginBottom: '15px' }}>
-              <label>Max Turns per Game</label>
-              <input type="number" value={maxTurns} onChange={e => setMaxTurns(parseInt(e.target.value))} min="10" max="500" />
-            </div>
-            <div className="actions" style={{ flexDirection: 'column', gap: '10px' }}>
-              <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={() => setIsTraining(!isTraining)}>
-                {isTraining ? 'Stop Training' : 'Start Training'}
-              </button>
-              <button className="reset-btn" onClick={handleSave}>Save to Vault</button>
-              <button 
-                className="recommend-btn" 
-                style={{width: '100%', height: '40px', fontSize: '14px'}}
-                onClick={runChampionship}
-                disabled={isTraining || isChampionship}
-              >
-                {isChampionship ? 'Champ Match...' : 'Run Championship Match'}
-              </button>
-            </div>
-
-            {champResults && (
-              <div className="champ-box" style={{marginTop: '15px', background: 'rgba(0,0,0,0.3)', padding: '10px', borderRadius: '8px'}}>
-                <h4 style={{margin: '0 0 5px 0', fontSize: '12px', color: 'var(--accent-color)'}}>Championship Score</h4>
-                <div style={{display: 'flex', justifyContent: 'space-around', fontWeight: 'bold'}}>
-                  <span>Current: {champResults.p1}</span>
-                  <span>vs</span>
-                  <span>Opponent: {champResults.p2}</span>
-                </div>
-              </div>
-            )}
-
-            <div className="stat-summary" style={{ marginTop: '20px' }}>
-              <div className="stat-card"><span>Gen:</span> <span>{generations}</span></div>
-              <div className="stat-card"><span>Loss:</span> <span>{loss.toFixed(4)}</span></div>
-            </div>
-          </section>
-        </div>
       </div>
+
+      <section className="training-log card" style={{marginTop: '20px'}}>
+        <h3>System Logs</h3>
+        <div className="log-window" style={{height: '150px'}}>
+          {logs.map((log, i) => <p key={i}>{log}</p>)}
+        </div>
+      </section>
     </div>
   );
 };
