@@ -8,7 +8,9 @@ export function encodeState(
   board: BoardState,
   currentPlayer: Player,
   foci: Coord[], // [Global, Self, P1_L1, P1_L2, P2_L1, P2_L2]
-  radii: { global: number; self: number; memory: number }
+  radii: { global: number; self: number; memory: number },
+  turn: number,
+  maxTurns: number
 ): number[] {
   const input: number[] = [];
 
@@ -56,6 +58,7 @@ export function encodeState(
   input.push(currentPlayer === 1 ? 1 : 0); // Team ID
   input.push(1); // Constant 1
   input.push(0); // Constant 0
+  input.push(turn / maxTurns); // Normalized Turn (0.0 to 1.0)
 
   return input;
 }

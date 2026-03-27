@@ -17,8 +17,8 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   const memoryHexes = 3 * memoryRadius * (memoryRadius + 1) + 1;
   
   const HEX_INPUTS = globalHexes + selfHexes + (memoryHexes * 4);
-  const CONTEXT_INPUTS = 3;
-  const LOCALIZATION_INPUTS = 12;
+  const CONTEXT_INPUTS = 4; // Team, 1, 0, Turn
+  const LOCALIZATION_INPUTS = 12; // [Q, R] for all 6 focal windows
   const INPUT_NODES = HEX_INPUTS + CONTEXT_INPUTS + LOCALIZATION_INPUTS; 
 
   // Output: Mirror selection of hexes for 2 moves
@@ -73,7 +73,7 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
             <h3>Input: Vision + Location</h3>
             <div className="fixed-node-badge">{INPUT_NODES.toLocaleString()} Nodes</div>
             <p><strong>{HEX_INPUTS.toLocaleString()}</strong> spatial nodes</p>
-            <p><strong>{LOCALIZATION_INPUTS + CONTEXT_INPUTS}</strong> metadata nodes</p>
+            <p><strong>{LOCALIZATION_INPUTS + CONTEXT_INPUTS}</strong> metadata nodes (Local + Team, 1, 0, Turn)</p>
             
             <div className="mini-input" style={{ marginTop: '20px' }}>
               <label>Global Focus (Radius {focalRadius})</label>

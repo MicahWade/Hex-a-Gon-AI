@@ -40,6 +40,8 @@ export class Trainer {
     foci: Coord[],
     radii: any,
     config: TrainingConfig,
+    turn: number,
+    maxTurns: number,
     specificModel?: tf.LayersModel
   ): Promise<{ board: BoardState; moves: Coord[]; winner: Player | null; actionIndices: number[] }> {
     const moves: Coord[] = [];
@@ -51,7 +53,7 @@ export class Trainer {
     // AI makes sequential moves
     const moveCount = board.size === 0 ? 1 : 2;
     for (let i = 0; i < moveCount; i++) {
-      const state = encodeState(currentBoard, player, foci, radii);
+      const state = encodeState(currentBoard, player, foci, radii, turn, maxTurns);
       const action = await this.predictAction(state, config.epsilon, modelToUse);
       const move = decodeMove(action, foci, radii);
 

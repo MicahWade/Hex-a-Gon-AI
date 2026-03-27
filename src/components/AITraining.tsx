@@ -139,15 +139,17 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
         let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
         const modelIsP1 = g < 5;
 
+        let turns = 0;
         while (!winner && board.size < maxTurns * 2) {
           const m = (currentPlayer === 1 && modelIsP1) || (currentPlayer === 2 && !modelIsP1) 
             ? modelRef.current : opponentModel;
           
-          const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, radii, config, m);
+          const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, radii, config, turns, maxTurns, m);
           board = result.board;
           winner = result.winner;
           if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
           currentPlayer = currentPlayer === 1 ? 2 : 1;
+          turns++;
         }
 
         if (winner) {
@@ -177,7 +179,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
       let turns = 0;
 
       while (!winner && turns < maxTurns && active && isTraining) {
-        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, radii, config);
+        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, radii, config, turns, maxTurns);
         board = result.board;
         winner = result.winner;
         if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
