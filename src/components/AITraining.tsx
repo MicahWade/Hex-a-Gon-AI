@@ -50,6 +50,14 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
   };
 
   const initTrainer = (model: tf.LayersModel) => {
+    // Models loaded from storage need to be re-compiled before training
+    if (!model.optimizer) {
+      model.compile({
+        optimizer: tf.train.adam(0.001),
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+      });
+    }
     modelRef.current = model;
     trainerRef.current = new Trainer(model);
   };
