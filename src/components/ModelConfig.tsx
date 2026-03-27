@@ -6,9 +6,9 @@ interface Props {
 }
 
 export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
-  const [focalRadius, setFocalRadius] = useState(30);
-  const [selfRadius, setSelfRadius] = useState(7);
-  const [memoryRadius, setMemoryRadius] = useState(5);
+  const [focalRadius, setFocalRadius] = useState(14);
+  const [selfRadius, setSelfRadius] = useState(8);
+  const [memoryRadius, setMemoryRadius] = useState(6);
 
   // Hexes in radius R = 3R(R+1) + 1
   const globalHexes = 3 * focalRadius * (focalRadius + 1) + 1;
@@ -16,10 +16,10 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   const memoryHexes = 3 * memoryRadius * (memoryRadius + 1) + 1;
   
   // Input breakdown: 
-  // Global (1) + Self (1) + P1 History (2) + P2 History (2) = 6 Windows
   const HEX_INPUTS = globalHexes + selfHexes + (memoryHexes * 4);
-  const CONTEXT_INPUTS = 3;
-  const INPUT_NODES = HEX_INPUTS + CONTEXT_INPUTS; 
+  const CONTEXT_INPUTS = 3; // Team, 1, 0
+  const LOCALIZATION_INPUTS = 12; // [Q, R] for all 6 focal windows
+  const INPUT_NODES = HEX_INPUTS + CONTEXT_INPUTS + LOCALIZATION_INPUTS; 
 
   // Output: Mirror selection of all visible hexes for 2 moves
   const OUTPUT_NODES = HEX_INPUTS * 2; 
@@ -47,7 +47,7 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   const applyRecommended = () => {
     if (INPUT_NODES > 3000) {
       setLayers([1024, 1024, 512, 256]);
-    } else if (INPUT_NODES > 1500) {
+    } else if (INPUT_NODES > 1000) {
       setLayers([512, 512, 256]);
     } else {
       setLayers([256, 128]);
@@ -58,16 +58,19 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
     <div className="tab-content model-config-view">
       <div className="settings-header">
         <h2>Model Architecture</h2>
-        <p className="section-desc">Multi-Focal Vision: Tracking global battle, self focus, and player history.</p>
+        <p className="section-desc">Multi-Focal Vision with Global Localization.</p>
       </div>
       
       <div className="config-layout">
         <section className="fixed-layers card">
           <div className="layer-type-group">
-            <h3>Input: Multi-Focal Eyes</h3>
+            <h3>Input: Vision + Location</h3>
             <div className="fixed-node-badge">{INPUT_NODES.toLocaleString()} Nodes</div>
+            <p><strong>{HEX_INPUTS.toLocaleString()}</strong> spatial nodes</p>
+            <p><strong>{LOCALIZATION_INPUTS}</strong> localization nodes (Axial Q,R for all windows)</p>
+            <p><strong>{CONTEXT_INPUTS}</strong> context nodes (Team, 1, 0)</p>
             
-            <div className="mini-input">
+            <div className="mini-input" style={{ marginTop: '20px' }}>
               <label>Global Focus (Radius {focalRadius})</label>
               <input type="number" value={focalRadius} onChange={e => setFocalRadius(parseInt(e.target.value))} min="5" max="50" />
               <span className="node-unit">{globalHexes} hexes</span>
@@ -90,9 +93,9 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
           </div>
           
           <div className="layer-type-group" style={{ marginTop: '30px' }}>
-            <h3>Output: Combined Selection</h3>
+            <h3>Output: Mirror Selection</h3>
             <div className="fixed-node-badge">{OUTPUT_NODES.toLocaleString()} Nodes</div>
-            <p>AI chooses Move 1 & 2 from the combined pool of all visible focal windows.</p>
+            <p>Sequential moves chosen from visible pools.</p>
           </div>
         </section>
 
