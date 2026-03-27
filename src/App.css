@@ -379,14 +379,36 @@ button:hover {
   padding: 6px;
 }
 
-.full-viz-canvas {
-  width: 100%;
-  height: 500px;
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 12px;
+.viz-main {
+  position: relative;
+  height: 600px;
 }
 
-.viz-container {
+.full-viz-canvas {
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 12px;
+  display: block;
+}
+
+.viz-controls-hint {
+  position: absolute;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 6px 15px;
+  border-radius: 20px;
+  font-size: 11px;
+  color: #bdc3c7;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  letter-spacing: 0.5px;
+}
+
+.main-nav {
+
   padding: 20px;
   margin-bottom: 25px;
 }
