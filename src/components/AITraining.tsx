@@ -4,7 +4,8 @@ import { createModel } from '../ai/modelBuilder';
 import { Trainer } from '../ai/trainer';
 import type { TrainingConfig } from '../ai/trainer';
 import type { BoardState, Coord, Player } from '../types';
-import { getVaultMetadata, saveModelToVault, loadModelFromVault, deleteModelFromVault, ModelMetadata } from '../ai/modelVault';
+import { getVaultMetadata, saveModelToVault, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
+import type { ModelMetadata } from '../ai/modelVault';
 
 interface Props {
   isTraining: boolean;
@@ -132,7 +133,8 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
       const radii = { global: 14, self: 8, memory: 6 };
 
       // 10 Games total, 5 as P1, 5 as P2
-      for (let g = 0; i < 10; i++) {
+      for (let g = 0; g < 10; g++) {
+
         let board: BoardState = new Map();
         let currentPlayer: Player = 1;
         let winner: Player | null = null;
