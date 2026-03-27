@@ -7,16 +7,20 @@ interface Props {
 
 export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   const [focalRadius, setFocalRadius] = useState(30);
+  const [selfRadius, setSelfRadius] = useState(7);
+  const [playRadius, setPlayRadius] = useState(30); // Fixed output reach
 
-  // Hexes in radius R = 3R(R+1) + 1
-  const hexCount = 3 * focalRadius * (focalRadius + 1) + 1;
+  // Focal Window A (Global): 3R(R+1) + 1
+  const globalHexes = 3 * focalRadius * (focalRadius + 1) + 1;
+  // Focal Window B (Self):
+  const selfHexes = 3 * selfRadius * (selfRadius + 1) + 1;
   
-  // Input: One-hot or state-based grid of the focal window
-  const INPUT_NODES = hexCount; 
-  // Output: 2 moves, each a RingIndex [Ring, Index] selection within the window
-  // We'll estimate the output based on the focal radius range
-  const RING_NODES = focalRadius + 1;
-  const INDEX_NODES = focalRadius * 6;
+  // Total Input: Both windows combined
+  const INPUT_NODES = globalHexes + selfHexes; 
+
+  // Output: Decoupled from input. AI picks Ring/Index in a fixed "Playable" range.
+  const RING_NODES = playRadius + 1;
+  const INDEX_NODES = playRadius * 6;
   const OUTPUT_NODES = (RING_NODES + INDEX_NODES) * 2; 
 
   const updateLayer = (index: number, val: number) => {
@@ -42,31 +46,42 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
     <div className="tab-content model-config-view">
       <div className="settings-header">
         <h2>Model Architecture</h2>
-        <p className="section-desc">Focal Window Spatial Encoding (Radius {focalRadius} Around Move).</p>
+        <p className="section-desc">Dual-Focal Spatial Encoding: Global Focus + Self Focus.</p>
       </div>
       
       <div className="config-layout">
         <section className="fixed-layers card">
           <div className="layer-type-group">
-            <h3>Input: Focal Window</h3>
+            <h3>Input: Dual Focal "Eyes"</h3>
             <div className="fixed-node-badge">{INPUT_NODES.toLocaleString()} Nodes</div>
-            <p>Spatial state of all hexes within radius {focalRadius} of the latest move focus.</p>
+            
             <div className="mini-input">
-              <label>Focal Radius</label>
+              <label>Global Focus (Radius {focalRadius})</label>
               <input type="number" value={focalRadius} onChange={e => setFocalRadius(parseInt(e.target.value))} min="5" max="50" />
+              <span className="node-unit">{globalHexes} hexes</span>
+            </div>
+
+            <div className="mini-input" style={{ marginTop: '15px' }}>
+              <label>Self Focus (Radius {selfRadius})</label>
+              <input type="number" value={selfRadius} onChange={e => setSelfRadius(parseInt(e.target.value))} min="1" max="15" />
+              <span className="node-unit">{selfHexes} hexes</span>
             </div>
           </div>
           
           <div className="layer-type-group" style={{ marginTop: '30px' }}>
-            <h3>Output: Ring-Index Moves</h3>
+            <h3>Output: Ring-Index Reach</h3>
             <div className="fixed-node-badge">{OUTPUT_NODES.toLocaleString()} Nodes</div>
-            <p>Predicts [Ring] and [Index] for Move 1 & Move 2 (Relative to Focus).</p>
+            <p>Selection range for Move 1 & 2.</p>
+            <div className="mini-input">
+              <label>Max Playable Radius</label>
+              <input type="number" value={playRadius} onChange={e => setPlayRadius(parseInt(e.target.value))} min="5" max="50" />
+            </div>
           </div>
         </section>
 
         <section className="layer-controls card">
           <h3>Hidden Layers (Adjustable)</h3>
-          <p className="section-desc">Processing depth. Recommended: 3-5 layers for spatial pattern detection.</p>
+          <p className="section-desc">Model depth for processing dual-vision inputs.</p>
           
           <div className="layer-list">
             {layers.map((nodes, i) => (
@@ -90,8 +105,8 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
           
           <div className="complexity-stats">
             <div className="stat-row">
-              <span>Focal Area Size:</span>
-              <strong>{hexCount.toLocaleString()} Hexes</strong>
+              <span>Total Network Depth:</span>
+              <strong>{layers.length + 2} Layers</strong>
             </div>
             <div className="stat-row">
               <span>Total Parameters:</span>
