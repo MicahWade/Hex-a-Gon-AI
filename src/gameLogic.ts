@@ -1,4 +1,4 @@
-import type { Coord, Player, BoardState } from './types';
+import type { Coord, Player, BoardState, NotationType } from './types';
 import { coordToString } from './types';
 
 // Axial coordinates system (flat topped hexagons)
@@ -7,6 +7,49 @@ import { coordToString } from './types';
 // y = size * (sqrt(3)/2 * q + sqrt(3) * r)
 
 export const SQRT3 = Math.sqrt(3);
+
+export function getNotation(coord: Coord, type: NotationType): string {
+  const { q, r } = coord;
+  if (q === 0 && r === 0) return 'CENTER';
+
+  if (type === 'ring') {
+    // Ring number (radius)
+    const ring = Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r));
+    const letter = String.fromCharCode(64 + ring); // A=1, B=2...
+
+    // Direction 0 is Right: (ring, 0)
+    // Find index by following the ring boundary
+    // Directions for flat-topped ring traversal:
+    // (0,-1) -> (-1,0) -> (-1,1) -> (0,1) -> (1,0) -> (1,-1)
+    const ringDirs = [
+      { q: -1, r: 0 }, { q: 0, r: 1 }, { q: 1, r: 0 }, 
+      { q: 1, r: -1 }, { q: 0, r: -1 }, { q: -1, r: 1 }
+    ];
+    
+    // Start at (ring, 0) which is index 0
+    let currQ = ring;
+    let currR = 0;
+    let index = 0;
+
+    // Follow the ring clockwise to find index
+    const steps = [
+      { q: 0, r: -1 }, { q: -1, r: 0 }, { q: -1, r: 1 }, 
+      { q: 0, r: 1 }, { q: 1, r: 0 }, { q: 1, r: -1 }
+    ];
+
+    for (let side = 0; side < 6; side++) {
+      for (let step = 0; step < ring; step++) {
+        if (currQ === q && currR === r) return `${letter}${index}`;
+        currQ += steps[side].q;
+        currR += steps[side].r;
+        index++;
+      }
+    }
+    return `${letter}?`; // Should not happen
+  }
+
+  return `(${q}, ${r})`;
+}
 
 export function hexToPixel(q: number, r: number, size: number): { x: number; y: number } {
   const x = size * (1.5 * q);

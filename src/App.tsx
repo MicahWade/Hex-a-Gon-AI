@@ -3,16 +3,24 @@ import { useHexGame } from './hooks/useHexGame';
 import { HexBoard } from './components/HexBoard';
 import { Rules } from './components/Rules';
 import { AITraining } from './components/AITraining';
+import { Settings } from './components/Settings';
+import { MoveLog } from './components/MoveLog';
+import type { NotationType, LogPosition, Theme } from './types';
 import './App.css';
 
-type Tab = 'play' | 'rules' | 'ai';
+type Tab = 'play' | 'rules' | 'ai' | 'history' | 'settings';
 type GameMode = 'pvp' | 'pvai';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('play');
   const [gameMode, setGameMode] = useState<GameMode>('pvp');
+  const [notation, setNotation] = useState<NotationType>('axial');
+  const [logPosition, setLogPosition] = useState<LogPosition>('right');
+  const [theme, setTheme] = useState<Theme>('dark');
+
   const {
     board,
+    history,
     turn,
     currentPlayer,
     movesLeftInTurn,
@@ -22,11 +30,13 @@ function App() {
   } = useHexGame();
 
   return (
-    <div className="app-container">
+    <div className={`app-container theme-${theme}`}>
       <nav className="main-nav">
         <button className={activeTab === 'play' ? 'active' : ''} onClick={() => setActiveTab('play')}>Play Game</button>
+        <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>History</button>
         <button className={activeTab === 'rules' ? 'active' : ''} onClick={() => setActiveTab('rules')}>Rules</button>
         <button className={activeTab === 'ai' ? 'active' : ''} onClick={() => setActiveTab('ai')}>AI Training</button>
+        <button className={activeTab === 'settings' ? 'active' : ''} onClick={() => setActiveTab('settings')}>Settings</button>
       </nav>
 
       {activeTab === 'play' && (
@@ -72,6 +82,14 @@ function App() {
             </div>
             {!winner && <button onClick={resetGame} className="reset-btn">Reset</button>}
           </div>
+          
+          <MoveLog 
+            history={history} 
+            notation={notation} 
+            isSidePanel={true} 
+            position={logPosition} 
+          />
+          
           <HexBoard
             board={board}
             onMove={makeMove}
@@ -81,8 +99,19 @@ function App() {
         </div>
       )}
 
+      {activeTab === 'history' && <MoveLog history={history} notation={notation} />}
       {activeTab === 'rules' && <Rules />}
       {activeTab === 'ai' && <AITraining />}
+      {activeTab === 'settings' && (
+        <Settings 
+          notation={notation} 
+          setNotation={setNotation}
+          logPosition={logPosition}
+          setLogPosition={setLogPosition}
+          theme={theme}
+          setTheme={setTheme}
+        />
+      )}
     </div>
   );
 }

@@ -6,20 +6,42 @@
   overflow: hidden;
 }
 
+:root {
+  --bg-color: #2c3e50;
+  --panel-bg: rgba(44, 62, 80, 0.85);
+  --accent-color: #3498db;
+  --text-primary: #ecf0f1;
+  --text-secondary: #bdc3c7;
+  --card-bg: rgba(0, 0, 0, 0.2);
+}
+
+.theme-amoled {
+  --bg-color: #000000;
+  --panel-bg: rgba(0, 0, 0, 0.9);
+  --card-bg: #111111;
+}
+
+.theme-dark {
+  --bg-color: #0e1621;
+  --panel-bg: rgba(23, 33, 43, 0.9);
+  --card-bg: #17212b;
+}
+
 .app-container {
   position: relative;
   width: 100%;
   height: 100%;
-  background-color: #2c3e50;
+  background-color: var(--bg-color);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  color: #ecf0f1;
+  color: var(--text-primary);
+  transition: background-color 0.3s ease;
 }
 
 .ui-overlay {
   position: absolute;
   top: 20px;
   left: 20px;
-  background: rgba(44, 62, 80, 0.85);
+  background: var(--panel-bg);
   padding: 20px;
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -32,7 +54,7 @@
 h1 {
   margin: 0 0 15px 0;
   font-size: 24px;
-  color: #3498db;
+  color: var(--accent-color);
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 2px;
@@ -70,7 +92,7 @@ h1 {
 
 .instructions {
   font-size: 14px;
-  color: #bdc3c7;
+  color: var(--text-secondary);
   line-height: 1.4;
   margin-bottom: 15px;
 }
@@ -80,31 +102,30 @@ h1 {
 }
 
 button {
-  background-color: #3498db;
+  background-color: var(--accent-color);
   color: white;
   border: none;
   padding: 10px 20px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 16px;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
   width: 100%;
 }
 
 button:hover {
-  background-color: #2980b9;
+  filter: brightness(1.1);
 }
 
 .reset-btn {
   background-color: transparent;
   border: 1px solid #7f8c8d;
-  color: #bdc3c7;
-  width: 100%;
+  color: var(--text-secondary);
 }
 
 .reset-btn:hover {
   background-color: rgba(255, 255, 255, 0.05);
-  border-color: #ecf0f1;
+  border-color: var(--text-primary);
 }
 
 .game-mode-selector {
@@ -120,12 +141,12 @@ button:hover {
   padding: 6px 12px;
   font-size: 14px;
   background: transparent;
-  color: #bdc3c7;
+  color: var(--text-secondary);
   border: none;
 }
 
 .game-mode-selector button.active-mode {
-  background: #3498db;
+  background: var(--accent-color);
   color: white;
   box-shadow: 0 2px 8px rgba(52, 152, 219, 0.4);
 }
@@ -133,7 +154,7 @@ button:hover {
 .toggle-group {
   margin-bottom: 12px;
   font-size: 14px;
-  color: #ecf0f1;
+  color: var(--text-primary);
 }
 
 .toggle-group label {
@@ -147,6 +168,154 @@ button:hover {
   width: 18px;
   height: 18px;
   cursor: pointer;
+}
+
+/* Move Log Chat Box */
+.move-log-chat {
+  position: absolute;
+  bottom: 20px;
+  width: 250px;
+  height: 350px;
+  background: rgba(26, 37, 47, 0.7);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  z-index: 5;
+  pointer-events: auto;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+}
+
+.move-log-chat.pos-left { left: 20px; }
+.move-log-chat.pos-right { right: 20px; }
+
+.log-header {
+  padding: 10px 15px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.log-header h3 {
+  margin: 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent-color);
+}
+
+.move-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.move-entry {
+  display: grid;
+  grid-template-columns: 45px 35px 1fr;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  align-items: center;
+}
+
+.move-num { color: #95a5a6; font-family: monospace; }
+.move-player { font-weight: bold; }
+.move-coord { color: var(--text-primary); text-align: right; }
+
+.no-moves {
+  text-align: center;
+  color: #7f8c8d;
+  margin-top: 20px;
+  font-size: 14px;
+}
+
+/* Settings View Improvements */
+.settings-view {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-header h2 {
+  font-size: 32px;
+  margin-bottom: 30px;
+  color: var(--accent-color);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 25px;
+}
+
+.card {
+  background: var(--card-bg);
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: transform 0.2s, border-color 0.2s;
+}
+
+.card:hover {
+  border-color: rgba(52, 152, 219, 0.3);
+}
+
+.card h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 18px;
+  color: var(--accent-color);
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+
+.button-group-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.button-group-vertical button {
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.active-btn {
+  background: var(--accent-color) !important;
+  color: white !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+}
+
+.inactive-btn {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+.inactive-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.full-history {
+  padding-top: 80px;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .main-nav {
@@ -163,7 +332,7 @@ button:hover {
 .main-nav button {
   background: transparent;
   border: none;
-  color: #bdc3c7;
+  color: var(--text-secondary);
   padding: 8px 16px;
   margin: 0 5px;
   width: auto;
@@ -171,8 +340,8 @@ button:hover {
 }
 
 .main-nav button.active {
-  color: #3498db;
-  border-bottom: 2px solid #3498db;
+  color: var(--accent-color);
+  border-bottom: 2px solid var(--accent-color);
 }
 
 .tab-content {
@@ -185,7 +354,7 @@ button:hover {
 }
 
 .rules-view h2, .ai-view h2 {
-  color: #3498db;
+  color: var(--accent-color);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 10px;
 }
@@ -195,7 +364,7 @@ button:hover {
 }
 
 .rules-view h3 {
-  color: #ecf0f1;
+  color: var(--text-primary);
 }
 
 .rules-view ul {
@@ -215,7 +384,7 @@ button:hover {
 }
 
 .model-config, .training-stats {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--card-bg);
   padding: 20px;
   border-radius: 8px;
 }
@@ -228,13 +397,13 @@ button:hover {
 
 .input-group label {
   font-size: 12px;
-  color: #bdc3c7;
+  color: var(--text-secondary);
   margin-bottom: 5px;
 }
 
 .input-group input {
-  background: #34495e;
-  border: 1px solid #7f8c8d;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: white;
   padding: 8px;
   border-radius: 4px;
@@ -262,14 +431,14 @@ button:hover {
 .stop-btn:hover { background-color: #c0392b; }
 
 .log-window {
-  background: #1a252f;
+  background: rgba(0, 0, 0, 0.3);
   padding: 15px;
   border-radius: 8px;
   height: 200px;
   overflow-y: auto;
   font-family: monospace;
   font-size: 13px;
-  color: #95a5a6;
+  color: var(--text-secondary);
 }
 
 .log-window p { margin: 5px 0; }
