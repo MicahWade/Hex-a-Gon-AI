@@ -725,3 +725,31 @@ button:hover {
 .stat-row strong {
   color: var(--accent-color);
 }
+
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.section-header-row h3 {
+  margin: 0;
+}
+
+.recommend-btn {
+  background: rgba(46, 204, 113, 0.15);
+  border: 1px solid rgba(46, 204, 113, 0.3);
+  color: #2ecc71;
+  font-size: 11px;
+  padding: 4px 10px;
+  width: auto;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.recommend-btn:hover {
+  background: #2ecc71;
+  color: white;
+}

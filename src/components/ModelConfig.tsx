@@ -8,17 +8,16 @@ interface Props {
 export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   const [focalRadius, setFocalRadius] = useState(30);
   const [selfRadius, setSelfRadius] = useState(7);
-  const [playRadius, setPlayRadius] = useState(30); // Fixed output reach
 
-  // Focal Window A (Global): 3R(R+1) + 1
+  // Focal Window A (Global)
   const globalHexes = 3 * focalRadius * (focalRadius + 1) + 1;
-  // Focal Window B (Self):
+  // Focal Window B (Self)
   const selfHexes = 3 * selfRadius * (selfRadius + 1) + 1;
   
-  // Total Input: Both windows combined
   const INPUT_NODES = globalHexes + selfHexes; 
 
-  // Output: Decoupled from input. AI picks Ring/Index in a fixed "Playable" range.
+  // Playable Radius is anything it can see (max of both views)
+  const playRadius = Math.max(focalRadius, selfRadius);
   const RING_NODES = playRadius + 1;
   const INDEX_NODES = playRadius * 6;
   const OUTPUT_NODES = (RING_NODES + INDEX_NODES) * 2; 
@@ -42,17 +41,29 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
     }
   };
 
+  const applyRecommended = () => {
+    // Recommendation logic based on input complexity (log-scaling)
+    // For ~3000 nodes, we want a funnel approach
+    if (INPUT_NODES > 2000) {
+      setLayers([512, 256, 128]);
+    } else if (INPUT_NODES > 1000) {
+      setLayers([256, 128, 64]);
+    } else {
+      setLayers([128, 64]);
+    }
+  };
+
   return (
     <div className="tab-content model-config-view">
       <div className="settings-header">
         <h2>Model Architecture</h2>
-        <p className="section-desc">Dual-Focal Spatial Encoding: Global Focus + Self Focus.</p>
+        <p className="section-desc">Dual-Focal Spatial Encoding. AI can play anywhere within its focal visibility.</p>
       </div>
       
       <div className="config-layout">
         <section className="fixed-layers card">
           <div className="layer-type-group">
-            <h3>Input: Dual Focal "Eyes"</h3>
+            <h3>Input Visibility</h3>
             <div className="fixed-node-badge">{INPUT_NODES.toLocaleString()} Nodes</div>
             
             <div className="mini-input">
@@ -69,19 +80,18 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
           </div>
           
           <div className="layer-type-group" style={{ marginTop: '30px' }}>
-            <h3>Output: Ring-Index Reach</h3>
+            <h3>Output Reach (Auto)</h3>
             <div className="fixed-node-badge">{OUTPUT_NODES.toLocaleString()} Nodes</div>
-            <p>Selection range for Move 1 & 2.</p>
-            <div className="mini-input">
-              <label>Max Playable Radius</label>
-              <input type="number" value={playRadius} onChange={e => setPlayRadius(parseInt(e.target.value))} min="5" max="50" />
-            </div>
+            <p>Selection range covers entire visibility (Radius {playRadius}).</p>
           </div>
         </section>
 
         <section className="layer-controls card">
-          <h3>Hidden Layers (Adjustable)</h3>
-          <p className="section-desc">Model depth for processing dual-vision inputs.</p>
+          <div className="section-header-row">
+            <h3>Hidden Layers</h3>
+            <button className="recommend-btn" onClick={applyRecommended}>Recommended</button>
+          </div>
+          <p className="section-desc">Neurons per processing stage.</p>
           
           <div className="layer-list">
             {layers.map((nodes, i) => (
@@ -104,10 +114,6 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
           </div>
           
           <div className="complexity-stats">
-            <div className="stat-row">
-              <span>Total Network Depth:</span>
-              <strong>{layers.length + 2} Layers</strong>
-            </div>
             <div className="stat-row">
               <span>Total Parameters:</span>
               <strong>~{(INPUT_NODES * layers[0] + layers.reduce((acc, val, i) => acc + (layers[i+1] ? val * layers[i+1] : 0), 0) + layers[layers.length-1] * OUTPUT_NODES).toLocaleString()}</strong>
