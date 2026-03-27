@@ -236,6 +236,35 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
               {logs.map((log, i) => <p key={i}>{log}</p>)}
             </div>
           </section>
+
+          <section className="reward-config card">
+            <h3>Reward System</h3>
+            <p className="section-desc">Adjust training incentives.</p>
+            <div className="reward-grid">
+              <div className="input-group">
+                <label>Win P1/P2</label>
+                <div style={{display: 'flex', gap: '10px'}}>
+                  <input type="number" value={rewards.p1Win} step={0.1} onChange={e => setRewards({...rewards, p1Win: parseFloat(e.target.value)})} />
+                  <input type="number" value={rewards.p2Win} step={0.1} onChange={e => setRewards({...rewards, p2Win: parseFloat(e.target.value)})} />
+                </div>
+              </div>
+              <div className="input-group">
+                <label>Draw P1/P2</label>
+                <div style={{display: 'flex', gap: '10px'}}>
+                  <input type="number" value={rewards.p1Draw} step={0.1} onChange={e => setRewards({...rewards, p1Draw: parseFloat(e.target.value)})} />
+                  <input type="number" value={rewards.p2Draw} step={0.1} onChange={e => setRewards({...rewards, p2Draw: parseFloat(e.target.value)})} />
+                </div>
+              </div>
+              <div className="input-group">
+                <label>Threat Detection</label>
+                <input type="number" value={rewards.threat} step={0.01} onChange={e => setRewards({...rewards, threat: parseFloat(e.target.value)})} />
+              </div>
+              <div className="input-group">
+                <label>Efficiency</label>
+                <input type="number" value={rewards.efficiency} step={0.001} onChange={e => setRewards({...rewards, efficiency: parseFloat(e.target.value)})} />
+              </div>
+            </div>
+          </section>
         </div>
 
         <div className="ai-side-col">
@@ -270,26 +299,6 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
             <div className="stat-summary" style={{ marginTop: '20px' }}>
               <div className="stat-card"><span>Gen:</span> <span>{generations}</span></div>
               <div className="stat-card"><span>Loss:</span> <span>{loss.toFixed(4)}</span></div>
-            </div>
-          </section>
-
-          <section className="reward-config card">
-            <h3>Rewards</h3>
-            <div className="reward-grid">
-              <div className="input-group">
-                <label>Win P1/P2</label>
-                <div style={{display: 'flex', gap: '5px'}}>
-                  <input type="number" value={rewards.p1Win} step={0.1} onChange={e => setRewards({...rewards, p1Win: parseFloat(e.target.value)})} />
-                  <input type="number" value={rewards.p2Win} step={0.1} onChange={e => setRewards({...rewards, p2Win: parseFloat(e.target.value)})} />
-                </div>
-              </div>
-              <div className="input-group">
-                <label>Threat/Eff.</label>
-                <div style={{display: 'flex', gap: '5px'}}>
-                  <input type="number" value={rewards.threat} step={0.01} onChange={e => setRewards({...rewards, threat: parseFloat(e.target.value)})} />
-                  <input type="number" value={rewards.efficiency} step={0.001} onChange={e => setRewards({...rewards, efficiency: parseFloat(e.target.value)})} />
-                </div>
-              </div>
             </div>
           </section>
         </div>
