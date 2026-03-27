@@ -931,9 +931,16 @@ button:hover {
 
 .dual-input {
   display: flex;
-  gap: 10px;
+  gap: 5px;
 }
 
 .dual-input input {
-  flex: 1;
+  width: 50%;
+  min-width: 0;
+}
+
+.reward-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
