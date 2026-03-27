@@ -666,3 +666,35 @@ button:hover {
 }
 
 .log-window p { margin: 5px 0; }
+
+.config-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 30px;
+}
+
+.layer-type-group h3 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  margin-bottom: 15px;
+}
+
+.fixed-node-badge {
+  background: var(--accent-color);
+  color: white;
+  display: inline-block;
+  padding: 10px 20px;
+  border-radius: 30px;
+  font-weight: bold;
+  font-size: 20px;
+  margin-bottom: 10px;
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+}
+
+.layer-type-group p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
