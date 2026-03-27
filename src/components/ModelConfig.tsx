@@ -14,11 +14,13 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   // Focal Window B (Self)
   const selfHexes = 3 * selfRadius * (selfRadius + 1) + 1;
   
-  // Input: State of observed hexes
-  const INPUT_NODES = globalHexes + selfHexes; 
+  // Input: State of observed hexes + 3 Context nodes (Team, Const 1, Const 0)
+  const HEX_INPUTS = globalHexes + selfHexes;
+  const CONTEXT_INPUTS = 3;
+  const INPUT_NODES = HEX_INPUTS + CONTEXT_INPUTS; 
 
   // Output: Mirror selection of the observed hexes for 2 moves
-  const OUTPUT_NODES = INPUT_NODES * 2; 
+  const OUTPUT_NODES = HEX_INPUTS * 2; 
 
   const updateLayer = (index: number, val: number) => {
     const newLayers = [...layers];
@@ -62,8 +64,10 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
       <div className="config-layout">
         <section className="fixed-layers card">
           <div className="layer-type-group">
-            <h3>Input: Observed Hexes</h3>
+            <h3>Input: Vision + Context</h3>
             <div className="fixed-node-badge">{INPUT_NODES.toLocaleString()} Nodes</div>
+            <p><strong>{HEX_INPUTS.toLocaleString()}</strong> spatial nodes (Hex states)</p>
+            <p><strong>{CONTEXT_INPUTS}</strong> context nodes (Team, 1, 0)</p>
             
             <div className="mini-input">
               <label>Global Focus (Radius {focalRadius})</label>
