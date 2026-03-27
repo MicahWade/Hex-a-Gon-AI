@@ -21,6 +21,7 @@ function App() {
   const [p1Color, setP1Color] = useState('#3498db');
   const [p2Color, setP2Color] = useState('#e74c3c');
   const [isTraining, setIsTraining] = useState(false);
+  const [networkArchitecture, setNetworkArchitecture] = useState<number[]>([16, 32, 32, 16, 8]);
 
   const {
     board,
@@ -124,7 +125,13 @@ function App() {
       )}
       {activeTab === 'rules' && <Rules />}
       {activeTab === 'ai' && <AITraining isTraining={isTraining} setIsTraining={setIsTraining} />}
-      {activeTab === 'network' && <NetworkViz isTraining={isTraining} />}
+      {activeTab === 'network' && (
+        <NetworkViz 
+          isTraining={isTraining} 
+          layers={networkArchitecture} 
+          setLayers={setNetworkArchitecture} 
+        />
+      )}
       {activeTab === 'settings' && (
         <Settings 
           notation={notation} 
