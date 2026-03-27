@@ -242,7 +242,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
       
       <div className="ai-grid">
         <div className="ai-main-col">
-          <section className="model-vault card">
+          <section className="model-vault card full-height-card">
             <h3>Model Vault</h3>
             <div className="vault-list">
               {vault.length === 0 && <p className="no-moves">No saved models.</p>}
@@ -259,12 +259,12 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
                 </div>
               ))}
             </div>
-            <button className="add-layer-btn" style={{marginTop: '15px'}} onClick={handleCreateNew}>Initialize New Model</button>
+            <button className="add-layer-btn" style={{marginTop: 'auto'}} onClick={handleCreateNew}>Initialize New Model</button>
           </section>
         </div>
 
         <div className="ai-side-col">
-          <section className="reward-config card">
+          <section className="reward-config card full-height-card">
             <h3>Reward System</h3>
             <p className="section-desc">Adjust training incentives.</p>
             <div className="reward-grid">
