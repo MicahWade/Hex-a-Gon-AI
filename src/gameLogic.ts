@@ -18,15 +18,6 @@ export function getNotation(coord: Coord, type: NotationType): string {
     const letter = String.fromCharCode(64 + ring); // A=1, B=2...
 
     // Direction 0 is Right: (ring, 0)
-    // Find index by following the ring boundary
-    // Directions for flat-topped ring traversal:
-    // (0,-1) -> (-1,0) -> (-1,1) -> (0,1) -> (1,0) -> (1,-1)
-    const ringDirs = [
-      { q: -1, r: 0 }, { q: 0, r: 1 }, { q: 1, r: 0 }, 
-      { q: 1, r: -1 }, { q: 0, r: -1 }, { q: -1, r: 1 }
-    ];
-    
-    // Start at (ring, 0) which is index 0
     let currQ = ring;
     let currR = 0;
     let index = 0;

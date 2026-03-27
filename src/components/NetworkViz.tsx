@@ -68,7 +68,6 @@ export const NetworkViz: React.FC<Props> = ({ isTraining, layers, setLayers }) =
       fullArchitecture.forEach((nodes, i) => {
         const x = startX + i * layerSpacing;
         const maxDraw = 15;
-        const step = Math.max(1, Math.ceil(nodes / maxDraw));
         const nodesToShow = Math.min(nodes, maxDraw);
 
         for (let j = 0; j < nodesToShow; j++) {

@@ -124,7 +124,7 @@ function App() {
         />
       )}
       {activeTab === 'rules' && <Rules />}
-      {activeTab === 'ai' && <AITraining isTraining={isTraining} setIsTraining={setIsTraining} />}
+      {activeTab === 'ai' && <AITraining isTraining={isTraining} setIsTraining={setIsTraining} layers={networkArchitecture} />}
       {activeTab === 'architecture' && (
         <ModelConfig 
           layers={networkArchitecture} 

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as tf from '@tensorflow/tfjs';
 import { createModel } from '../ai/modelBuilder';
-import { Trainer, TrainingConfig } from '../ai/trainer';
-import { BoardState, Coord, Player } from '../types';
+import { Trainer } from '../ai/trainer';
+import type { TrainingConfig } from '../ai/trainer';
+import type { BoardState, Coord, Player } from '../types';
 
 interface Props {
   isTraining: boolean;

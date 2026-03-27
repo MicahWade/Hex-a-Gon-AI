@@ -1,5 +1,5 @@
-import { BoardState, Player, Coord, coordToString } from '../types';
-import { getNotation } from '../gameLogic';
+import type { BoardState, Player, Coord } from '../types';
+import { coordToString } from '../types';
 
 /**
  * Converts the board state into a flat array (Tensor input) based on focal windows.

@@ -1,5 +1,6 @@
 import * as tf from '@tensorflow/tfjs';
-import { BoardState, Player, Coord, Move, coordToString } from '../types';
+import type { BoardState, Player, Coord } from '../types';
+import { coordToString } from '../types';
 import { checkWin } from '../gameLogic';
 import { encodeState, decodeMove } from './encoder';
 
