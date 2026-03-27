@@ -28,6 +28,28 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
   const trainerRef = useRef<Trainer | null>(null);
   const modelRef = useRef<tf.LayersModel | null>(null);
 
+  // Auto-load model on mount
+  useEffect(() => {
+    const autoLoad = async () => {
+      try {
+        const savedModel = await tf.loadLayersModel('indexeddb://hex-a-gon-model');
+        modelRef.current = savedModel;
+        trainerRef.current = new Trainer(savedModel);
+        addLog("[System] Previous model loaded from storage.");
+      } catch (e) {
+        addLog("[System] No saved model found.");
+      }
+    };
+    autoLoad();
+  }, []);
+
+  const saveModel = async () => {
+    if (modelRef.current) {
+      await modelRef.current.save('indexeddb://hex-a-gon-model');
+      addLog("[System] Model saved.");
+    }
+  };
+
   const addLog = (msg: string) => {
     setLog(prev => [msg, ...prev].slice(0, 50));
   };
@@ -171,9 +193,12 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
         <div className="ai-side-col">
           <section className="training-stats card">
             <h3>Controls</h3>
-            <div className="actions">
+            <div className="actions" style={{ flexDirection: 'column', gap: '10px' }}>
               <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>
                 {isTraining ? 'Stop Training' : 'Start Training'}
+              </button>
+              <button className="reset-btn" onClick={saveModel} style={{ border: '1px solid var(--accent-color)', color: 'var(--accent-color)' }}>
+                Save Progress
               </button>
             </div>
 
