@@ -8,7 +8,7 @@ interface Props {
 export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   const [focalRadius, setFocalRadius] = useState(30);
   const [selfRadius, setSelfRadius] = useState(7);
-  const [memoryRadius] = useState(5); // Fixed R5 for history focal windows
+  const [memoryRadius, setMemoryRadius] = useState(5);
 
   // Hexes in radius R = 3R(R+1) + 1
   const globalHexes = 3 * focalRadius * (focalRadius + 1) + 1;
@@ -80,8 +80,9 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
             </div>
 
             <div className="mini-input" style={{ marginTop: '15px' }}>
-              <label>Tactical Memory (4 &times; Radius 5)</label>
-              <p className="node-unit" style={{ color: 'var(--text-secondary)' }}>
+              <label>Tactical Memory (Radius {memoryRadius})</label>
+              <input type="number" value={memoryRadius} onChange={e => setMemoryRadius(parseInt(e.target.value))} min="1" max="15" />
+              <p className="node-unit" style={{ color: 'var(--text-secondary)', marginTop: '5px' }}>
                 Tracks last 2 moves for P1 and P2.<br/>
                 Total: {memoryHexes * 4} hexes
               </p>
