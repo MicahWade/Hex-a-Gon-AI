@@ -13,9 +13,10 @@ interface Props {
   setIsTraining: (val: boolean) => void;
   layers: number[];
   setLayers: (newLayers: number[]) => void;
+  focalRadii: { global: number; self: number; memory: number };
 }
 
-export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers, setLayers }) => {
+export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers, setLayers, focalRadii }) => {
   const [generations, setGenerations] = useState(0);
   const [loss, setLoss] = useState<number>(0);
   const [logs, setLog] = useState<string[]>(["[System] Ready for training."]);
@@ -52,7 +53,6 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
   };
 
   const initTrainer = (model: tf.LayersModel) => {
-    // Models loaded from storage need to be re-compiled before training
     if (!model.optimizer) {
       model.compile({
         optimizer: tf.train.adam(0.001),
@@ -64,41 +64,38 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
     trainerRef.current = new Trainer(model);
   };
 
-  const handleCreateNew = () => {
-    const focalRadius = 14;
-    const selfRadius = 8;
-    const memoryRadius = 6;
-    const HEX_INPUTS = (3 * focalRadius * (focalRadius + 1) + 1) + 
-                      (3 * selfRadius * (selfRadius + 1) + 1) + 
-                      (3 * memoryRadius * (memoryRadius + 1) + 1) * 4;
-    const INPUT_NODES = HEX_INPUTS + 4 + 12;
-    const OUTPUT_NODES = HEX_INPUTS;
+  const getIOConfig = () => {
+    const hexInputs = (3 * focalRadii.global * (focalRadii.global + 1) + 1) + 
+                      (3 * focalRadii.self * (focalRadii.self + 1) + 1) + 
+                      (3 * focalRadii.memory * (focalRadii.memory + 1) + 1) * 4;
+    return {
+      inputNodes: hexInputs + 4 + 12,
+      outputNodes: hexInputs
+    };
+  };
 
+  const handleCreateNew = () => {
+    const { inputNodes, outputNodes } = getIOConfig();
     const model = createModel({
-      inputNodes: INPUT_NODES,
-      outputNodes: OUTPUT_NODES,
+      inputNodes,
+      outputNodes,
       hiddenLayers: layers,
       learningRate: 0.001
     });
     initTrainer(model);
-    addLog(`[System] New model initialized with ${layers.length} layers.`);
+    addLog(`[System] New model initialized (${inputNodes} in, ${outputNodes} out).`);
   };
 
   const handleSave = async () => {
     if (!modelRef.current) return;
     const name = prompt("Enter model name:", currentModelName) || currentModelName;
-    const focalRadius = 14;
-    const selfRadius = 8;
-    const memoryRadius = 6;
-    const HEX_INPUTS = (3 * focalRadius * (focalRadius + 1) + 1) + 
-                      (3 * selfRadius * (selfRadius + 1) + 1) + 
-                      (3 * memoryRadius * (memoryRadius + 1) + 1) * 4;
+    const { inputNodes, outputNodes } = getIOConfig();
 
     const meta: ModelMetadata = {
       name,
       timestamp: Date.now(),
-      inputNodes: HEX_INPUTS + 4 + 12,
-      outputNodes: HEX_INPUTS,
+      inputNodes,
+      outputNodes,
       hiddenLayers: layers
     };
 
@@ -144,7 +141,6 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
       let p1Wins = 0;
       let p2Wins = 0;
       const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards };
-      const radii = { global: 14, self: 8, memory: 6 };
 
       for (let g = 0; g < 10; g++) {
         let board: BoardState = new Map();
@@ -158,7 +154,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
           const m = (currentPlayer === 1 && modelIsP1) || (currentPlayer === 2 && !modelIsP1) 
             ? modelRef.current : opponentModel;
           
-          const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, radii, config, turns, maxTurns, m);
+          const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns, m);
           board = result.board;
           winner = result.winner;
           if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
@@ -184,27 +180,20 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
 
     const runCycle = async () => {
       const config: TrainingConfig = { 
-        learningRate: 0.001, 
-        batchSize: 64, 
-        gamma: 0.95, 
-        epsilon: epsilon, 
-        rewards 
+        learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: epsilon, rewards 
       };
-      const radii = { global: 14, self: 8, memory: 6 };
       let board: BoardState = new Map();
       let currentPlayer: Player = 1;
       let winner: Player | null = null;
       let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
       let turns = 0;
 
-      // Experience Buffer for this game
       const gameHistory: { state: number[], action: number, player: Player }[] = [];
 
       while (!winner && turns < maxTurns && active && isTraining) {
-        const stateBefore = encodeState(board, currentPlayer, foci, radii, turns, maxTurns);
-        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, radii, config, turns, maxTurns);
+        const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
+        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
         
-        // Record all moves in this turn to memory
         result.actionIndices.forEach(actionIdx => {
           gameHistory.push({ state: stateBefore, action: actionIdx, player: currentPlayer });
         });
@@ -215,21 +204,18 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
         currentPlayer = currentPlayer === 1 ? 2 : 1;
         turns++;
 
-        // High Intensity Training (Every 5 turns instead of 10)
         if (turns % 5 === 0) {
           const l = await trainerRef.current!.trainBatch(64);
           if (l) setLoss(l);
         }
       }
 
-      // Distribute Rewards at end of game
       gameHistory.forEach(exp => {
-        let reward = rewards.efficiency; // Small penalty for each move
+        let reward = rewards.efficiency;
         if (winner) {
           if (exp.player === winner) reward += (winner === 1 ? rewards.p1Win : rewards.p2Win);
-          else reward -= 1.0; // Penalty for losing
+          else reward -= 1.0;
         } else {
-          // Draw
           reward += (exp.player === 1 ? rewards.p1Draw : rewards.p2Draw);
         }
         trainerRef.current!.addToMemory(exp.state, exp.action, reward, null);
@@ -242,7 +228,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
     };
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns]);
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon]);
 
   return (
     <div className="tab-content ai-view">

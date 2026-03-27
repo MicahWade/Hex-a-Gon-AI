@@ -1,20 +1,25 @@
 import React, { useState } from 'react';
 
+interface FocalRadii {
+  global: number;
+  self: number;
+  memory: number;
+}
+
 interface Props {
   layers: number[];
   setLayers: (newLayers: number[]) => void;
+  focalRadii: FocalRadii;
+  setFocalRadii: React.Dispatch<React.SetStateAction<FocalRadii>>;
 }
 
-export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
-  const [focalRadius, setFocalRadius] = useState(14);
-  const [selfRadius, setSelfRadius] = useState(8);
-  const [memoryRadius, setMemoryRadius] = useState(6);
+export const ModelConfig: React.FC<Props> = ({ layers, setLayers, focalRadii, setFocalRadii }) => {
   const [targetDepth, setTargetDepth] = useState(3);
 
   // Hexes in radius R = 3R(R+1) + 1
-  const globalHexes = 3 * focalRadius * (focalRadius + 1) + 1;
-  const selfHexes = 3 * selfRadius * (selfRadius + 1) + 1;
-  const memoryHexes = 3 * memoryRadius * (memoryRadius + 1) + 1;
+  const globalHexes = 3 * focalRadii.global * (focalRadii.global + 1) + 1;
+  const selfHexes = 3 * focalRadii.self * (focalRadii.self + 1) + 1;
+  const memoryHexes = 3 * focalRadii.memory * (focalRadii.memory + 1) + 1;
   
   const HEX_INPUTS = globalHexes + selfHexes + (memoryHexes * 4);
   const CONTEXT_INPUTS = 4; // Team, 1, 0, Turn
@@ -45,19 +50,20 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
 
   const applyRecommended = () => {
     const newLayers: number[] = [];
-    // Start big (based on input) and funnel down
     let currentSize = INPUT_NODES > 2000 ? 1024 : 512;
-    
     for (let i = 0; i < targetDepth; i++) {
       newLayers.push(currentSize);
-      // Reduce size for each layer, but keep it at least 256 or 512 for the final expansion
       if (i === targetDepth - 2) {
-        currentSize = 512; // Final hidden layer "sweet spot" for ~3k outputs
+        currentSize = 512;
       } else {
         currentSize = Math.max(256, Math.floor(currentSize * 0.7));
       }
     }
     setLayers(newLayers);
+  };
+
+  const updateRadius = (key: keyof FocalRadii, val: number) => {
+    setFocalRadii(prev => ({ ...prev, [key]: val }));
   };
 
   return (
@@ -76,18 +82,18 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
             <p><strong>{LOCALIZATION_INPUTS + CONTEXT_INPUTS}</strong> metadata nodes (Local + Team, 1, 0, Turn)</p>
             
             <div className="mini-input" style={{ marginTop: '20px' }}>
-              <label>Global Focus (Radius {focalRadius})</label>
-              <input type="number" value={focalRadius} onChange={e => setFocalRadius(parseInt(e.target.value))} min="5" max="50" />
+              <label>Global Focus (Radius {focalRadii.global})</label>
+              <input type="number" value={focalRadii.global} onChange={e => updateRadius('global', parseInt(e.target.value))} min="5" max="50" />
             </div>
 
             <div className="mini-input" style={{ marginTop: '15px' }}>
-              <label>Self Focus (Radius {selfRadius})</label>
-              <input type="number" value={selfRadius} onChange={e => setSelfRadius(parseInt(e.target.value))} min="1" max="15" />
+              <label>Self Focus (Radius {focalRadii.self})</label>
+              <input type="number" value={focalRadii.self} onChange={e => updateRadius('self', parseInt(e.target.value))} min="1" max="15" />
             </div>
 
             <div className="mini-input" style={{ marginTop: '15px' }}>
-              <label>Tactical Memory (Radius {memoryRadius})</label>
-              <input type="number" value={memoryRadius} onChange={e => setMemoryRadius(parseInt(e.target.value))} min="1" max="15" />
+              <label>Tactical Memory (Radius {focalRadii.memory})</label>
+              <input type="number" value={focalRadii.memory} onChange={e => updateRadius('memory', parseInt(e.target.value))} min="1" max="15" />
             </div>
           </div>
           
@@ -113,7 +119,7 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
               <button className="recommend-btn" onClick={applyRecommended}>Auto-Fill</button>
             </div>
           </div>
-          <p className="section-desc">Processing power between input vision and move selection.</p>
+          <p className="section-desc">Complexity: <strong>~{(INPUT_NODES * layers[0] + layers.reduce((acc, val, i) => acc + (layers[i+1] ? val * layers[i+1] : 0), 0) + layers[layers.length-1] * OUTPUT_NODES).toLocaleString()}</strong> Parameters</p>
           
           <div className="layer-list">
             {layers.map((nodes, i) => (
@@ -133,13 +139,6 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
             <button className="add-layer-btn" onClick={addLayer} disabled={layers.length >= 15}>
               + Add Layer Manually
             </button>
-          </div>
-          
-          <div className="complexity-stats">
-            <div className="stat-row">
-              <span>Total Parameters:</span>
-              <strong>~{(INPUT_NODES * layers[0] + layers.reduce((acc, val, i) => acc + (layers[i+1] ? val * layers[i+1] : 0), 0) + layers[layers.length-1] * OUTPUT_NODES).toLocaleString()}</strong>
-            </div>
           </div>
         </section>
       </div>

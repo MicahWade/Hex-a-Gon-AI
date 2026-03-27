@@ -21,7 +21,8 @@ function App() {
   const [p1Color, setP1Color] = useState('#3498db');
   const [p2Color, setP2Color] = useState('#e74c3c');
   const [isTraining, setIsTraining] = useState(false);
-  const [networkArchitecture, setNetworkArchitecture] = useState<number[]>([16, 32, 32, 16, 8]);
+  const [networkArchitecture, setNetworkArchitecture] = useState<number[]>([1024, 1024, 512, 256]);
+  const [focalRadii, setFocalRadii] = useState({ global: 14, self: 8, memory: 6 });
 
   const {
     board,
@@ -124,11 +125,21 @@ function App() {
         />
       )}
       {activeTab === 'rules' && <Rules />}
-      {activeTab === 'ai' && <AITraining isTraining={isTraining} setIsTraining={setIsTraining} layers={networkArchitecture} setLayers={setNetworkArchitecture} />}
+      {activeTab === 'ai' && (
+        <AITraining 
+          isTraining={isTraining} 
+          setIsTraining={setIsTraining} 
+          layers={networkArchitecture} 
+          setLayers={setNetworkArchitecture}
+          focalRadii={focalRadii}
+        />
+      )}
       {activeTab === 'architecture' && (
         <ModelConfig 
           layers={networkArchitecture} 
-          setLayers={setNetworkArchitecture} 
+          setLayers={setNetworkArchitecture}
+          focalRadii={focalRadii}
+          setFocalRadii={setFocalRadii}
         />
       )}
       {activeTab === 'settings' && (
