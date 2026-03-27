@@ -3,12 +3,13 @@ import { useHexGame } from './hooks/useHexGame';
 import { HexBoard } from './components/HexBoard';
 import { Rules } from './components/Rules';
 import { AITraining } from './components/AITraining';
+import { NetworkViz } from './components/NetworkViz';
 import { Settings } from './components/Settings';
 import { MoveLog } from './components/MoveLog';
 import type { NotationType, LogPosition, Theme } from './types';
 import './App.css';
 
-type Tab = 'play' | 'rules' | 'ai' | 'history' | 'settings';
+type Tab = 'play' | 'rules' | 'ai' | 'network' | 'history' | 'settings';
 type GameMode = 'pvp' | 'pvai';
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
   const [theme, setTheme] = useState<Theme>('dark');
   const [p1Color, setP1Color] = useState('#3498db');
   const [p2Color, setP2Color] = useState('#e74c3c');
+  const [isTraining, setIsTraining] = useState(false);
 
   const {
     board,
@@ -42,8 +44,9 @@ function App() {
       <nav className="main-nav">
         <button className={activeTab === 'play' ? 'active' : ''} onClick={() => setActiveTab('play')}>Play Game</button>
         <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>History</button>
-        <button className={activeTab === 'rules' ? 'active' : ''} onClick={() => setActiveTab('rules')}>Rules</button>
+        <button className={activeTab === 'network' ? 'active' : ''} onClick={() => setActiveTab('network')}>Network</button>
         <button className={activeTab === 'ai' ? 'active' : ''} onClick={() => setActiveTab('ai')}>AI Training</button>
+        <button className={activeTab === 'rules' ? 'active' : ''} onClick={() => setActiveTab('rules')}>Rules</button>
         <button className={activeTab === 'settings' ? 'active' : ''} onClick={() => setActiveTab('settings')}>Settings</button>
       </nav>
 
@@ -120,7 +123,8 @@ function App() {
         />
       )}
       {activeTab === 'rules' && <Rules />}
-      {activeTab === 'ai' && <AITraining />}
+      {activeTab === 'ai' && <AITraining isTraining={isTraining} setIsTraining={setIsTraining} />}
+      {activeTab === 'network' && <NetworkViz isTraining={isTraining} />}
       {activeTab === 'settings' && (
         <Settings 
           notation={notation} 
