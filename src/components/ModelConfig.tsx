@@ -9,19 +9,19 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   const [focalRadius, setFocalRadius] = useState(14);
   const [selfRadius, setSelfRadius] = useState(8);
   const [memoryRadius, setMemoryRadius] = useState(6);
+  const [targetDepth, setTargetDepth] = useState(3);
 
   // Hexes in radius R = 3R(R+1) + 1
   const globalHexes = 3 * focalRadius * (focalRadius + 1) + 1;
   const selfHexes = 3 * selfRadius * (selfRadius + 1) + 1;
   const memoryHexes = 3 * memoryRadius * (memoryRadius + 1) + 1;
   
-  // Input breakdown: 
   const HEX_INPUTS = globalHexes + selfHexes + (memoryHexes * 4);
-  const CONTEXT_INPUTS = 3; // Team, 1, 0
-  const LOCALIZATION_INPUTS = 12; // [Q, R] for all 6 focal windows
+  const CONTEXT_INPUTS = 3;
+  const LOCALIZATION_INPUTS = 12;
   const INPUT_NODES = HEX_INPUTS + CONTEXT_INPUTS + LOCALIZATION_INPUTS; 
 
-  // Output: Mirror selection of all visible hexes for 2 moves
+  // Output: Mirror selection of hexes for 2 moves
   const OUTPUT_NODES = HEX_INPUTS * 2; 
 
   const updateLayer = (index: number, val: number) => {
@@ -31,9 +31,8 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   };
 
   const addLayer = () => {
-    if (layers.length < 12) {
-      const lastSize = layers[layers.length - 1] || 512;
-      setLayers([...layers, Math.max(128, Math.floor(lastSize / 2))]);
+    if (layers.length < 15) {
+      setLayers([...layers, 256]);
     }
   };
 
@@ -45,20 +44,27 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
   };
 
   const applyRecommended = () => {
-    if (INPUT_NODES > 3000) {
-      setLayers([1024, 1024, 512, 256]);
-    } else if (INPUT_NODES > 1000) {
-      setLayers([512, 512, 256]);
-    } else {
-      setLayers([256, 128]);
+    const newLayers: number[] = [];
+    // Start big (based on input) and funnel down
+    let currentSize = INPUT_NODES > 2000 ? 1024 : 512;
+    
+    for (let i = 0; i < targetDepth; i++) {
+      newLayers.push(currentSize);
+      // Reduce size for each layer, but keep it at least 256 or 512 for the final expansion
+      if (i === targetDepth - 2) {
+        currentSize = 512; // Final hidden layer "sweet spot" for ~3k outputs
+      } else {
+        currentSize = Math.max(256, Math.floor(currentSize * 0.7));
+      }
     }
+    setLayers(newLayers);
   };
 
   return (
     <div className="tab-content model-config-view">
       <div className="settings-header">
         <h2>Model Architecture</h2>
-        <p className="section-desc">Multi-Focal Vision with Global Localization.</p>
+        <p className="section-desc">Design the deep learning core. Configure vision depth and processing power.</p>
       </div>
       
       <div className="config-layout">
@@ -67,44 +73,47 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
             <h3>Input: Vision + Location</h3>
             <div className="fixed-node-badge">{INPUT_NODES.toLocaleString()} Nodes</div>
             <p><strong>{HEX_INPUTS.toLocaleString()}</strong> spatial nodes</p>
-            <p><strong>{LOCALIZATION_INPUTS}</strong> localization nodes (Axial Q,R for all windows)</p>
-            <p><strong>{CONTEXT_INPUTS}</strong> context nodes (Team, 1, 0)</p>
+            <p><strong>{LOCALIZATION_INPUTS + CONTEXT_INPUTS}</strong> metadata nodes</p>
             
             <div className="mini-input" style={{ marginTop: '20px' }}>
               <label>Global Focus (Radius {focalRadius})</label>
               <input type="number" value={focalRadius} onChange={e => setFocalRadius(parseInt(e.target.value))} min="5" max="50" />
-              <span className="node-unit">{globalHexes} hexes</span>
             </div>
 
             <div className="mini-input" style={{ marginTop: '15px' }}>
               <label>Self Focus (Radius {selfRadius})</label>
               <input type="number" value={selfRadius} onChange={e => setSelfRadius(parseInt(e.target.value))} min="1" max="15" />
-              <span className="node-unit">{selfHexes} hexes</span>
             </div>
 
             <div className="mini-input" style={{ marginTop: '15px' }}>
               <label>Tactical Memory (Radius {memoryRadius})</label>
               <input type="number" value={memoryRadius} onChange={e => setMemoryRadius(parseInt(e.target.value))} min="1" max="15" />
-              <p className="node-unit" style={{ color: 'var(--text-secondary)', marginTop: '5px' }}>
-                Tracks last 2 moves for P1 and P2.<br/>
-                Total: {memoryHexes * 4} hexes
-              </p>
             </div>
           </div>
           
           <div className="layer-type-group" style={{ marginTop: '30px' }}>
             <h3>Output: Mirror Selection</h3>
             <div className="fixed-node-badge">{OUTPUT_NODES.toLocaleString()} Nodes</div>
-            <p>Sequential moves chosen from visible pools.</p>
+            <p>Direct mapping to all visible pools for 2 moves.</p>
           </div>
         </section>
 
         <section className="layer-controls card">
           <div className="section-header-row">
             <h3>Hidden Layers</h3>
-            <button className="recommend-btn" onClick={applyRecommended}>Recommended</button>
+            <div className="recommend-controls">
+              <div className="depth-input">
+                <label>Depth:</label>
+                <input 
+                  type="number" 
+                  value={targetDepth} 
+                  onChange={e => setTargetDepth(Math.max(1, Math.min(15, parseInt(e.target.value))))}
+                />
+              </div>
+              <button className="recommend-btn" onClick={applyRecommended}>Auto-Fill</button>
+            </div>
           </div>
-          <p className="section-desc">Complexity: <strong>~{(INPUT_NODES * layers[0] + layers.reduce((acc, val, i) => acc + (layers[i+1] ? val * layers[i+1] : 0), 0) + layers[layers.length-1] * OUTPUT_NODES).toLocaleString()}</strong> Parameters</p>
+          <p className="section-desc">Processing power between input vision and move selection.</p>
           
           <div className="layer-list">
             {layers.map((nodes, i) => (
@@ -121,9 +130,16 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
                 <button className="remove-layer-btn" onClick={() => removeLayer(i)}>&times;</button>
               </div>
             ))}
-            <button className="add-layer-btn" onClick={addLayer} disabled={layers.length >= 12}>
-              + Add Hidden Layer
+            <button className="add-layer-btn" onClick={addLayer} disabled={layers.length >= 15}>
+              + Add Layer Manually
             </button>
+          </div>
+          
+          <div className="complexity-stats">
+            <div className="stat-row">
+              <span>Total Parameters:</span>
+              <strong>~{(INPUT_NODES * layers[0] + layers.reduce((acc, val, i) => acc + (layers[i+1] ? val * layers[i+1] : 0), 0) + layers[layers.length-1] * OUTPUT_NODES).toLocaleString()}</strong>
+            </div>
           </div>
         </section>
       </div>

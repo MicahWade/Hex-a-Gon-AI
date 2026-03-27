@@ -737,6 +737,35 @@ button:hover {
   margin: 0;
 }
 
+.recommend-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.depth-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.depth-input label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.depth-input input {
+  width: 45px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #2ecc71;
+  padding: 4px;
+  border-radius: 4px;
+  font-weight: bold;
+  text-align: center;
+}
+
 .recommend-btn {
   background: rgba(46, 204, 113, 0.15);
   border: 1px solid rgba(46, 204, 113, 0.3);
