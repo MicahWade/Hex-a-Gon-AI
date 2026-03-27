@@ -2,53 +2,41 @@
 
 A strategic, infinite-grid hexagonal "6-in-a-row" game built with React, TypeScript, and TensorFlow.js.
 
+## 🧠 AI Training Lab (Browser-Based)
+
+Hex-A-Gon features a fully integrated **Reinforcement Learning** environment. You can design, train, and test Deep Learning models entirely within your web browser.
+
+### 📍 Where Training Happens
+Training occurs **locally on your machine** using your browser's hardware acceleration (GPU via WebGL). 
+- **Privacy**: No game data or models are ever uploaded to a server.
+- **Performance**: High-speed self-play happens in a background loop within the application.
+
+### 🛠️ How to Train:
+
+1.  **Architecture**: Go to the **Architecture** tab.
+    - Set your **Global Focus** (default R14) and **Self Focus** (default R8).
+    - Use **Auto-Fill** to generate an optimized "Funnel" neural network for your desired depth.
+2.  **Incentives**: Go to the **AI Training** tab.
+    - Tune the **Reward System** (e.g., Threat Detection vs. Efficiency).
+3.  **Execute**: Press **"Start Training"**. 
+    - The **Training Log** will show real-time game results.
+    - The **Loss** metric tracks the AI's learning progress (lower is better).
+
+### 🔬 Advanced Architecture
+- **Multi-Focal Vision**: The AI "sees" through 6 simultaneous focal windows (Global, Self, and 4 tactical memory windows).
+- **Sequential 2-Move Logic**: The AI makes its two moves one-by-one, re-observing the board after the first move for better tactical awareness.
+- **Mirror Selection**: The output layer is a 1-to-1 mapping of all observed hexes, making it highly efficient for spatial learning.
+
 ## 🎮 Game Rules
-
-Hex-A-Gon is a variation of connection games played on an infinite hexagonal grid with unique turn-based mechanics:
-
-- **Objective**: Be the first player to connect **six** hexagons in a straight line along any of the three axes.
-- **Asymmetric Opening**: 
-  - **Turn 1**: Player 1 places **one** piece (strictly at 0,0).
-  - **Turn 2+**: Every subsequent turn, the active player places **two** pieces consecutively.
-- **Infinite Board**: There are no boundaries. The game expands in any direction as players place their pieces.
-
-## 🧠 AI Training Guide
-
-You can train your own Deep Learning model to play Hex-A-Gon directly in your browser.
-
-### How to Start Training:
-
-1.  **Configure Architecture**: Go to the **Architecture** tab. Design your model's hidden layers (Recommended: use the "Recommended" button for a balanced start).
-2.  **Set Incentives**: Go to the **AI Training** tab and adjust the **Reward System**. This tells the AI what outcomes to value (e.g., favoring Player 2 wins or aggressive threat detection).
-3.  **Launch**: Press **"Start Training"**. The AI will begin playing against itself in the background.
-4.  **Monitor**:
-    -   **Training Log**: Watch real-time game results.
-    -   **Loss Graph**: A decreasing loss value indicates the AI is learning to predict moves more accurately.
-    -   **History**: Completed games will appear in the History tab if enabled.
-
-### Training Mechanics:
-- **Self-Play**: The AI generates its own data by playing against its current version.
-- **Multi-Focal Vision**: The AI "sees" the board through 6 high-resolution focal windows centered on recent activity.
-- **Deep Q-Learning**: Uses reinforcement learning to optimize 6.5M+ parameters for winning strategies.
-
-## 🚀 Features
-
-- **Infinite Canvas**: Drag to pan and scroll to zoom.
-- **Customization**: Change player colors, UI themes (Deep Blue, AMOLED, Dark), and move notations (Axial, RingIndex).
-- **Architecture Lab**: Real-time complexity estimation and layer control.
+- **Objective**: Connect **six** hexagons in a straight line.
+- **Opening**: Player 1 starts at (0,0).
+- **Turns**: Every turn after the first consists of **two moves**.
+- **Board**: Infinite expansion in all directions.
 
 ## 🛠️ Technical Stack
-
-- **Framework**: [React 19](https://react.dev/)
-- **AI Engine**: [TensorFlow.js](https://www.tensorflow.org/js)
-- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Framework**: React 19
+- **AI Engine**: TensorFlow.js (Deep Q-Learning)
 - **Rendering**: HTML5 Canvas API
 
-## 🕹️ Controls
-
-- **Left Click**: Place a piece.
-- **Left Click + Drag**: Pan the board.
-- **Mouse Wheel**: Zoom.
-
 ---
-Developed as a high-performance, strategic playground for hexagonal AI research.
+Developed for high-performance hexagonal strategy and AI research.
