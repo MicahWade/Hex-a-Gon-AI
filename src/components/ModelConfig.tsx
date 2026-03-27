@@ -6,14 +6,17 @@ interface Props {
 }
 
 export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
-  const [maxRadius, setMaxRadius] = useState(20);
-  const [seqLength, setSeqLength] = useState(100);
+  const [focalRadius, setFocalRadius] = useState(30);
 
-  // Input: Sequence of pieces [Ring, Index, Player]
-  const INPUT_NODES = seqLength * 3; 
-  // Output: (Ring selection + Index selection) * 2 moves
-  const RING_NODES = maxRadius + 1;
-  const INDEX_NODES = maxRadius * 6;
+  // Hexes in radius R = 3R(R+1) + 1
+  const hexCount = 3 * focalRadius * (focalRadius + 1) + 1;
+  
+  // Input: One-hot or state-based grid of the focal window
+  const INPUT_NODES = hexCount; 
+  // Output: 2 moves, each a RingIndex [Ring, Index] selection within the window
+  // We'll estimate the output based on the focal radius range
+  const RING_NODES = focalRadius + 1;
+  const INDEX_NODES = focalRadius * 6;
   const OUTPUT_NODES = (RING_NODES + INDEX_NODES) * 2; 
 
   const updateLayer = (index: number, val: number) => {
@@ -24,7 +27,7 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
 
   const addLayer = () => {
     if (layers.length < 12) {
-      setLayers([...layers, 128]);
+      setLayers([...layers, 256]);
     }
   };
 
@@ -39,35 +42,31 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
     <div className="tab-content model-config-view">
       <div className="settings-header">
         <h2>Model Architecture</h2>
-        <p className="section-desc">Entity-based Encoding for large-range infinite board support.</p>
+        <p className="section-desc">Focal Window Spatial Encoding (Radius {focalRadius} Around Move).</p>
       </div>
       
       <div className="config-layout">
         <section className="fixed-layers card">
           <div className="layer-type-group">
-            <h3>Input: Entity Sequence</h3>
-            <div className="fixed-node-badge">{INPUT_NODES} Nodes</div>
-            <p>List of the last {seqLength} pieces placed.</p>
+            <h3>Input: Focal Window</h3>
+            <div className="fixed-node-badge">{INPUT_NODES.toLocaleString()} Nodes</div>
+            <p>Spatial state of all hexes within radius {focalRadius} of the latest move focus.</p>
             <div className="mini-input">
-              <label>Sequence Length</label>
-              <input type="number" value={seqLength} onChange={e => setSeqLength(parseInt(e.target.value))} />
+              <label>Focal Radius</label>
+              <input type="number" value={focalRadius} onChange={e => setFocalRadius(parseInt(e.target.value))} min="5" max="50" />
             </div>
           </div>
           
           <div className="layer-type-group" style={{ marginTop: '30px' }}>
-            <h3>Output: Ring-Index Dual Head</h3>
-            <div className="fixed-node-badge">{OUTPUT_NODES} Nodes</div>
-            <p>Predicts [Ring] and [Index] for Move 1 & Move 2.</p>
-            <div className="mini-input">
-              <label>Max Ring Radius</label>
-              <input type="number" value={maxRadius} onChange={e => setMaxRadius(parseInt(e.target.value))} />
-            </div>
+            <h3>Output: Ring-Index Moves</h3>
+            <div className="fixed-node-badge">{OUTPUT_NODES.toLocaleString()} Nodes</div>
+            <p>Predicts [Ring] and [Index] for Move 1 & Move 2 (Relative to Focus).</p>
           </div>
         </section>
 
         <section className="layer-controls card">
           <h3>Hidden Layers (Adjustable)</h3>
-          <p className="section-desc">Neurons per layer. Larger layers handle more complex strategies.</p>
+          <p className="section-desc">Processing depth. Recommended: 3-5 layers for spatial pattern detection.</p>
           
           <div className="layer-list">
             {layers.map((nodes, i) => (
@@ -91,12 +90,12 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers }) => {
           
           <div className="complexity-stats">
             <div className="stat-row">
-              <span>Total Parameters:</span>
-              <strong>~{(INPUT_NODES * layers[0] + layers.reduce((acc, val, i) => acc + (layers[i+1] ? val * layers[i+1] : 0), 0) + layers[layers.length-1] * OUTPUT_NODES).toLocaleString()}</strong>
+              <span>Focal Area Size:</span>
+              <strong>{hexCount.toLocaleString()} Hexes</strong>
             </div>
             <div className="stat-row">
-              <span>Network Depth:</span>
-              <strong>{layers.length + 2} Layers</strong>
+              <span>Total Parameters:</span>
+              <strong>~{(INPUT_NODES * layers[0] + layers.reduce((acc, val, i) => acc + (layers[i+1] ? val * layers[i+1] : 0), 0) + layers[layers.length-1] * OUTPUT_NODES).toLocaleString()}</strong>
             </div>
           </div>
         </section>
