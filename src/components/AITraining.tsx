@@ -21,6 +21,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
   const [currentModelName, setCurrentModelName] = useState<string>("default-model");
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
+  const [maxTurns, setMaxTurns] = useState(100);
 
   const [rewards, setRewards] = useState({
     p1Win: 1.0,
@@ -141,7 +142,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
         let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
         const modelIsP1 = g < 5;
 
-        while (!winner && board.size < 100) {
+        while (!winner && board.size < maxTurns * 2) {
           const m = (currentPlayer === 1 && modelIsP1) || (currentPlayer === 2 && !modelIsP1) 
             ? modelRef.current : opponentModel;
           
@@ -179,7 +180,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
       let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
       let turns = 0;
 
-      while (!winner && turns < 100 && active && isTraining) {
+      while (!winner && turns < maxTurns && active && isTraining) {
         const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, radii, config);
         board = result.board;
         winner = result.winner;
@@ -270,6 +271,10 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
         <div className="ai-side-col">
           <section className="training-stats card">
             <h3>Controls</h3>
+            <div className="mini-input" style={{ marginBottom: '15px' }}>
+              <label>Max Turns per Game</label>
+              <input type="number" value={maxTurns} onChange={e => setMaxTurns(parseInt(e.target.value))} min="10" max="500" />
+            </div>
             <div className="actions" style={{ flexDirection: 'column', gap: '10px' }}>
               <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={() => setIsTraining(!isTraining)}>
                 {isTraining ? 'Stop Training' : 'Start Training'}
