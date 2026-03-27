@@ -12,9 +12,10 @@ interface Props {
   isTraining: boolean;
   setIsTraining: (val: boolean) => void;
   layers: number[];
+  setLayers: (newLayers: number[]) => void;
 }
 
-export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers }) => {
+export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers, setLayers }) => {
   const [generations, setGenerations] = useState(0);
   const [loss, setLoss] = useState<number>(0);
   const [logs, setLog] = useState<string[]>(["[System] Ready for training."]);
@@ -23,6 +24,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
   const [maxTurns, setMaxTurns] = useState(100);
+  const [epsilon, setEpsilon] = useState(0.2);
 
   const [rewards, setRewards] = useState({
     p1Win: 1.0,
@@ -109,6 +111,11 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
   const handleLoad = async (name: string) => {
     try {
       const model = await loadModelFromVault(name);
+      const meta = vault.find(m => m.name === name);
+      if (meta) {
+        setLayers(meta.hiddenLayers);
+        addLog(`[System] Synced architecture: [${meta.hiddenLayers.join(', ')}]`);
+      }
       initTrainer(model);
       setCurrentModelName(name);
       addLog(`[System] Model '${name}' loaded.`);
@@ -176,7 +183,13 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
     if (!isTraining || !trainerRef.current) return;
 
     const runCycle = async () => {
-      const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0.2, rewards };
+      const config: TrainingConfig = { 
+        learningRate: 0.001, 
+        batchSize: 64, 
+        gamma: 0.95, 
+        epsilon: epsilon, 
+        rewards 
+      };
       const radii = { global: 14, self: 8, memory: 6 };
       let board: BoardState = new Map();
       let currentPlayer: Player = 1;
@@ -246,6 +259,10 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers 
             <div className="mini-input-row">
               <label>Max Turns</label>
               <input type="number" value={maxTurns || 0} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" />
+            </div>
+            <div className="mini-input-row">
+              <label>Randomness</label>
+              <input type="number" value={epsilon} onChange={e => setEpsilon(parseSafeFloat(e.target.value))} step={0.05} min="0" max="1" />
             </div>
             <div className="action-buttons">
               <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={() => setIsTraining(!isTraining)}>
