@@ -17,6 +17,8 @@ function App() {
   const [notation, setNotation] = useState<NotationType>('axial');
   const [logPosition, setLogPosition] = useState<LogPosition>('right');
   const [theme, setTheme] = useState<Theme>('dark');
+  const [p1Color, setP1Color] = useState('#3498db');
+  const [p2Color, setP2Color] = useState('#e74c3c');
 
   const {
     board,
@@ -30,7 +32,13 @@ function App() {
   } = useHexGame();
 
   return (
-    <div className={`app-container theme-${theme}`}>
+    <div 
+      className={`app-container theme-${theme}`}
+      style={{ 
+        '--p1-color': p1Color, 
+        '--p2-color': p2Color 
+      } as React.CSSProperties}
+    >
       <nav className="main-nav">
         <button className={activeTab === 'play' ? 'active' : ''} onClick={() => setActiveTab('play')}>Play Game</button>
         <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>History</button>
@@ -88,6 +96,8 @@ function App() {
             notation={notation} 
             isSidePanel={true} 
             position={logPosition} 
+            p1Color={p1Color}
+            p2Color={p2Color}
           />
           
           <HexBoard
@@ -95,11 +105,20 @@ function App() {
             onMove={makeMove}
             currentPlayer={currentPlayer}
             winner={winner}
+            p1Color={p1Color}
+            p2Color={p2Color}
           />
         </div>
       )}
 
-      {activeTab === 'history' && <MoveLog history={history} notation={notation} />}
+      {activeTab === 'history' && (
+        <MoveLog 
+          history={history} 
+          notation={notation} 
+          p1Color={p1Color}
+          p2Color={p2Color}
+        />
+      )}
       {activeTab === 'rules' && <Rules />}
       {activeTab === 'ai' && <AITraining />}
       {activeTab === 'settings' && (
@@ -110,6 +129,10 @@ function App() {
           setLogPosition={setLogPosition}
           theme={theme}
           setTheme={setTheme}
+          p1Color={p1Color}
+          setP1Color={setP1Color}
+          p2Color={p2Color}
+          setP2Color={setP2Color}
         />
       )}
     </div>
