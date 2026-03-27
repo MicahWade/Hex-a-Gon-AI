@@ -6,9 +6,11 @@ import { AITraining } from './components/AITraining';
 import './App.css';
 
 type Tab = 'play' | 'rules' | 'ai';
+type GameMode = 'pvp' | 'pvai';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('play');
+  const [gameMode, setGameMode] = useState<GameMode>('pvp');
   const {
     board,
     turn,
@@ -31,6 +33,20 @@ function App() {
         <div className="game-view">
           <div className="ui-overlay">
             <h1>Hex-A-Gon</h1>
+            <div className="game-mode-selector">
+              <button 
+                className={gameMode === 'pvp' ? 'active-mode' : ''} 
+                onClick={() => setGameMode('pvp')}
+              >
+                PvP
+              </button>
+              <button 
+                className={gameMode === 'pvai' ? 'active-mode' : ''} 
+                onClick={() => setGameMode('pvai')}
+              >
+                PvAI
+              </button>
+            </div>
             <div className="status">
               {winner ? (
                 <div className="winner-announcement">

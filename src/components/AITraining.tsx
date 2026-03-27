@@ -28,10 +28,26 @@ export const AITraining: React.FC = () => {
             <label>Hidden Layers</label>
             <input type="text" defaultValue="128, 64, 32" />
           </div>
+          <div className="input-group">
+            <label>Turn Limit (per game)</label>
+            <input type="number" defaultValue={100} min={10} />
+          </div>
         </section>
 
         <section className="training-stats">
-          <h3>Training Statistics</h3>
+          <h3>Training Options</h3>
+          <div className="toggle-group">
+            <label>
+              <input type="checkbox" /> Save Constantly (Checkpoint)
+            </label>
+          </div>
+          <div className="toggle-group">
+            <label>
+              <input type="checkbox" defaultChecked /> Save games to history
+            </label>
+          </div>
+          
+          <h3 style={{ marginTop: '20px' }}>Training Statistics</h3>
           <div className="stat-card">
             <span>Status:</span>
             <span className={isTraining ? 'status-active' : 'status-idle'}>
