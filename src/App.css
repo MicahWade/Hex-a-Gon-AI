@@ -693,8 +693,35 @@ button:hover {
   box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
 }
 
-.layer-type-group p {
-  font-size: 13px;
+.mini-input {
+  margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mini-input label {
+  font-size: 11px;
   color: var(--text-secondary);
-  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.mini-input input {
+  width: 80px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  padding: 6px;
+  border-radius: 4px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.stat-row strong {
+  color: var(--accent-color);
 }
