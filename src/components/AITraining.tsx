@@ -14,8 +14,8 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining }) => {
     p2Win: 1.1,
     p1Draw: 0.4,
     p2Draw: 0.6,
-    threat: 0.2,
-    efficiency: -0.01
+    threat: 0.02,
+    efficiency: -0.005
   });
 
   const toggleTraining = () => {
