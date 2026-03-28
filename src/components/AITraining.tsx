@@ -92,7 +92,7 @@ export const AITraining: React.FC<Props> = ({
     initTrainer(model);
     setGenerations(0);
     setLoss(0);
-    addLog(`[System] New model initialized (${inputNodes} in, ${outputNodes} out).`);
+    addLog(`[System] New model: ${inputNodes} in -> [${layers.join(',')}] -> ${outputNodes} out`);
   };
 
   const toggleTraining = async () => {
@@ -128,7 +128,7 @@ export const AITraining: React.FC<Props> = ({
     await saveModelToVault(modelRef.current, meta);
     setCurrentModelName(name);
     setVault(getVaultMetadata());
-    addLog(`[System] Model '${name}' saved at Gen ${generations}.`);
+    addLog(`[System] Saved '${name}' (${inputNodes} in, [${layers.join(',')}] hidden, ${outputNodes} out)`);
   };
 
   const handleLoad = async (name: string) => {
@@ -147,7 +147,7 @@ export const AITraining: React.FC<Props> = ({
       initTrainer(model);
       if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
-      addLog(`[System] Model '${name}' loaded.`);
+      addLog(`[System] Loaded '${name}' (${meta?.inputNodes} in, [${meta?.hiddenLayers.join(',')}] hidden, ${meta?.outputNodes} out)`);
     } catch (e) {
       addLog(`[Error] Failed to load '${name}'.`);
     }
