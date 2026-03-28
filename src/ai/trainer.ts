@@ -89,14 +89,22 @@ export class Trainer {
   private async predictAction(state: number[], epsilon: number, modelOverride?: tf.LayersModel): Promise<number> {
     const model = modelOverride || this.model;
     const inputSize = model.inputs[0].shape[1] as number;
+    const outputSize = model.outputs[0].shape[1] as number;
     
     if (Math.random() < epsilon) {
-      return Math.floor(Math.random() * (model.outputs[0].shape[1] as number));
+      return Math.floor(Math.random() * outputSize);
     }
 
     return tf.tidy(() => {
-      // Use Float32Array for predictable tensor creation
-      const inputData = new Float32Array(state);
+      // Adapt state to model input size (supports backward compatibility)
+      let adaptedState = state;
+      if (state.length > inputSize) {
+        adaptedState = state.slice(0, inputSize);
+      } else if (state.length < inputSize) {
+        adaptedState = [...state, ...new Array(inputSize - state.length).fill(0)];
+      }
+
+      const inputData = new Float32Array(adaptedState);
       const input = tf.tensor2d(inputData, [1, inputSize]);
       const prediction = model.predict(input) as tf.Tensor;
       return prediction.argMax(1).dataSync()[0];
