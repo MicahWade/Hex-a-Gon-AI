@@ -3,76 +3,103 @@ import type { Player, BoardState, Move } from '../types';
 import { coordToString } from '../types';
 import { checkWin } from '../gameLogic';
 
+interface GameState {
+  board: BoardState;
+  history: Move[];
+  turn: number;
+  currentPlayer: Player;
+  movesLeft: number;
+  winner: Player | null;
+}
+
 export function useHexGame() {
-  const [board, setBoard] = useState<BoardState>(new Map());
-  const [history, setHistory] = useState<Move[]>([]);
-  const [turn, setTurn] = useState<number>(1);
-  const [currentPlayer, setCurrentPlayer] = useState<Player>(1);
-  const [movesLeftInTurn, setMovesLeftInTurn] = useState<number>(1);
-  const [winner, setWinner] = useState<Player | null>(null);
+  const [gameState, setGameState] = useState<GameState>({
+    board: new Map(),
+    history: [],
+    turn: 1,
+    currentPlayer: 1,
+    movesLeft: 1,
+    winner: null
+  });
 
   const makeMove = useCallback((q: number, r: number) => {
-    // Use functional updates to ensure we always have the latest state
-    setBoard(currentBoard => {
-      if (winner) return currentBoard;
+    setGameState(prev => {
+      if (prev.winner) return prev;
 
-      // First move always becomes (0,0)
-      const targetQ = currentBoard.size === 0 ? 0 : q;
-      const targetR = currentBoard.size === 0 ? 0 : r;
+      // Rule: First move of game always becomes (0,0)
+      const isFirstMove = prev.board.size === 0;
+      const targetQ = isFirstMove ? 0 : q;
+      const targetR = isFirstMove ? 0 : r;
       const key = coordToString({ q: targetQ, r: targetR });
 
-      if (currentBoard.has(key)) return currentBoard;
+      if (prev.board.has(key)) return prev;
 
-      // Create new board
-      const nextBoard = new Map(currentBoard);
-      nextBoard.set(key, currentPlayer);
+      // 1. Update Board
+      const nextBoard = new Map(prev.board);
+      nextBoard.set(key, prev.currentPlayer);
 
-      // We need to update other states based on this success
-      // Note: We are inside setBoard, so we use functional updates for others too
-      setHistory(prev => {
-        const moveInTurn = currentBoard.size === 0 ? 1 : (3 - movesLeftInTurn);
-        const newMove: Move = {
-          player: currentPlayer,
-          coord: { q: targetQ, r: targetR },
-          turn,
-          moveInTurn: moveInTurn,
-          timestamp: Date.now()
+      // 2. Update History
+      const moveInTurn = isFirstMove ? 1 : (prev.currentPlayer === 1 && prev.turn === 1 ? 1 : (3 - prev.movesLeft));
+      const newMove: Move = {
+        player: prev.currentPlayer,
+        coord: { q: targetQ, r: targetR },
+        turn: prev.turn,
+        moveInTurn: moveInTurn,
+        timestamp: Date.now()
+      };
+      const nextHistory = [...prev.history, newMove];
+
+      // 3. Check Win
+      if (checkWin(nextBoard, targetQ, targetR, prev.currentPlayer)) {
+        return {
+          ...prev,
+          board: nextBoard,
+          history: nextHistory,
+          winner: prev.currentPlayer
         };
-        return [...prev, newMove];
-      });
-
-      if (checkWin(nextBoard, targetQ, targetR, currentPlayer)) {
-        setWinner(currentPlayer);
-      } else {
-        if (movesLeftInTurn > 1) {
-          setMovesLeftInTurn(prev => prev - 1);
-        } else {
-          setCurrentPlayer(curr => (curr === 1 ? 2 : 1));
-          setTurn(t => t + 1);
-          setMovesLeftInTurn(2);
-        }
       }
 
-      return nextBoard;
+      // 4. Update Turn Logic
+      let nextPlayer = prev.currentPlayer;
+      let nextTurn = prev.turn;
+      let nextMovesLeft = prev.movesLeft - 1;
+
+      if (nextMovesLeft === 0) {
+        nextPlayer = prev.currentPlayer === 1 ? 2 : 1;
+        nextTurn = prev.turn + (prev.currentPlayer === 2 ? 1 : (prev.turn === 1 ? 1 : 0));
+        // Special case: Turn 1 is only 1 move for P1. All other turns are 2 moves.
+        nextMovesLeft = 2;
+      }
+
+      return {
+        board: nextBoard,
+        history: nextHistory,
+        turn: nextTurn,
+        currentPlayer: nextPlayer,
+        movesLeft: nextMovesLeft,
+        winner: null
+      };
     });
-  }, [currentPlayer, movesLeftInTurn, winner, turn]);
+  }, []);
 
   const resetGame = useCallback(() => {
-    setBoard(new Map());
-    setHistory([]);
-    setTurn(1);
-    setCurrentPlayer(1);
-    setMovesLeftInTurn(1);
-    setWinner(null);
+    setGameState({
+      board: new Map(),
+      history: [],
+      turn: 1,
+      currentPlayer: 1,
+      movesLeft: 1,
+      winner: null
+    });
   }, []);
 
   return {
-    board,
-    history,
-    turn,
-    currentPlayer,
-    movesLeftInTurn,
-    winner,
+    board: gameState.board,
+    history: gameState.history,
+    turn: gameState.turn,
+    currentPlayer: gameState.currentPlayer,
+    movesLeftInTurn: gameState.movesLeft,
+    winner: gameState.winner,
     makeMove,
     resetGame
   };
