@@ -92,23 +92,33 @@ export class Trainer {
   async trainBatch(batchSize: number) {
     if (this.memory.length < batchSize) return null;
 
-    const batch = this.memory.sort(() => 0.5 - Math.random()).slice(0, batchSize);
+    // Filter memory to ensure only states matching current model input size are used
+    const expectedSize = (this.model.inputs[0].shape[1] as number);
+    const validMemory = this.memory.filter(m => m.state.length === expectedSize);
     
-    const states = tf.tensor2d(batch.map(m => m.state));
+    if (validMemory.length < batchSize) return null;
+
+    const batch = validMemory.sort(() => 0.5 - Math.random()).slice(0, batchSize);
+    
+    // Efficiently stack tensors instead of mapping arrays of arrays
+    const states = tf.tidy(() => tf.stack(batch.map(m => tf.tensor1d(m.state))));
+    
     const targets = tf.tidy(() => {
       const currentPredictions = this.model.predict(states) as tf.Tensor;
       const targetData = currentPredictions.arraySync() as number[][];
 
       batch.forEach((m, i) => {
-        // Simple Q-update: Target = Reward + Gamma * MaxQ(nextState)
-        // For simplicity in this initial version, we use the immediate reward
         targetData[i][m.action] = m.reward;
       });
 
       return tf.tensor2d(targetData);
     });
 
-    const result = await this.model.fit(states, targets, { epochs: 1, verbose: 0 });
+    const result = await this.model.fit(states, targets, { 
+      epochs: 1, 
+      batchSize: batchSize,
+      verbose: 0 
+    });
     
     states.dispose();
     targets.dispose();
@@ -116,7 +126,14 @@ export class Trainer {
     return result.history.loss[0] as number;
   }
 
+  clearMemory() {
+    this.memory = [];
+  }
+
   addToMemory(state: number[], action: number, reward: number, nextState: number[] | null) {
+    const expectedSize = (this.model.inputs[0].shape[1] as number);
+    if (state.length !== expectedSize) return; // Ignore mismatched data
+    
     this.memory.push({ state, action, reward, nextState });
     if (this.memory.length > this.maxMemory) this.memory.shift();
   }

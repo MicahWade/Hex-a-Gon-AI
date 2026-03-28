@@ -114,6 +114,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
         addLog(`[System] Synced architecture: [${meta.hiddenLayers.join(', ')}]`);
       }
       initTrainer(model);
+      if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
       addLog(`[System] Model '${name}' loaded.`);
     } catch (e) {
