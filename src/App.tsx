@@ -132,6 +132,7 @@ function App() {
           layers={networkArchitecture} 
           setLayers={setNetworkArchitecture}
           focalRadii={focalRadii}
+          setFocalRadii={setFocalRadii}
         />
       )}
       {activeTab === 'architecture' && (

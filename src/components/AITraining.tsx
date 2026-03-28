@@ -14,9 +14,12 @@ interface Props {
   layers: number[];
   setLayers: (newLayers: number[]) => void;
   focalRadii: { global: number; self: number; memory: number };
+  setFocalRadii: React.Dispatch<React.SetStateAction<{ global: number; self: number; memory: number }>>;
 }
 
-export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers, setLayers, focalRadii }) => {
+export const AITraining: React.FC<Props> = ({ 
+  isTraining, setIsTraining, layers, setLayers, focalRadii, setFocalRadii 
+}) => {
   const [generations, setGenerations] = useState(0);
   const [loss, setLoss] = useState<number>(0);
   const [logs, setLog] = useState<string[]>(["[System] Ready for training."]);
@@ -108,7 +111,8 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
       timestamp: Date.now(),
       inputNodes,
       outputNodes,
-      hiddenLayers: layers
+      hiddenLayers: layers,
+      focalRadii: { ...focalRadii }
     };
 
     await saveModelToVault(modelRef.current, meta);
@@ -123,7 +127,10 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
       const meta = vault.find(m => m.name === name);
       if (meta) {
         setLayers(meta.hiddenLayers);
-        addLog(`[System] Synced architecture: [${meta.hiddenLayers.join(', ')}]`);
+        if (meta.focalRadii) {
+          setFocalRadii(meta.focalRadii);
+        }
+        addLog(`[System] Synced Architecture & Vision for '${name}'.`);
       }
       initTrainer(model);
       if (trainerRef.current) trainerRef.current.clearMemory();
@@ -151,6 +158,19 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
     
     try {
       const opponentModel = await loadModelFromVault(opponentName);
+      const opponentMeta = vault.find(m => m.name === opponentName);
+      
+      // Verification: Opponent must match current focal windows for a fair match
+      if (opponentMeta && (
+        opponentMeta.focalRadii.global !== focalRadii.global ||
+        opponentMeta.focalRadii.self !== focalRadii.self ||
+        opponentMeta.focalRadii.memory !== focalRadii.memory
+      )) {
+        addLog("[Error] Opponent vision radii do not match current model. Championship cancelled.");
+        setIsChampionship(false);
+        return;
+      }
+
       let p1Wins = 0;
       let p2Wins = 0;
       const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards };
