@@ -34,6 +34,7 @@ function App() {
   const [userPlayer, setUserPlayer] = useState<Player>(1);
   const [gameStarted, setGameStarted] = useState(false);
   const aiTrainerRef = useRef<Trainer | null>(null);
+  const aiProcessing = useRef(false);
 
   const {
     board,
@@ -61,14 +62,17 @@ function App() {
 
   // Handle AI turn
   useEffect(() => {
-    if (gameMode === 'pvai' && gameStarted && !winner && currentPlayer !== userPlayer && aiTrainerRef.current) {
+    const isAiTurn = gameMode === 'pvai' && gameStarted && !winner && currentPlayer !== userPlayer && aiTrainerRef.current;
+    
+    if (isAiTurn && !aiProcessing.current) {
+      aiProcessing.current = true;
+      
       const timer = setTimeout(async () => {
         const config = { epsilon: 0, rewards: {} } as any;
         
         // Build Focal Windows from recent history
-        // Order: [Global, Self, P1_L1, P1_L2, P2_L1, P2_L2]
-        const p1History = history.filter(m => m.player === 1).reverse();
-        const p2History = history.filter(m => m.player === 2).reverse();
+        const p1History = [...history].filter(m => m.player === 1).reverse();
+        const p2History = [...history].filter(m => m.player === 2).reverse();
         
         const lastMove = history.length > 0 ? history[history.length - 1].coord : { q: 0, r: 0 };
         const aiLastMove = (userPlayer === 1 ? p2History : p1History)[0]?.coord || { q: 0, r: 0 };
@@ -82,22 +86,21 @@ function App() {
           p2History[1]?.coord || { q: 0, r: 0 }
         ];
 
-        const result = await aiTrainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turn, 100);
-        
-        // Execute moves with a small delay between them for visual clarity
-        if (result.moves.length > 0) {
-          makeMove(result.moves[0].q, result.moves[0].r);
-          if (result.moves.length > 1) {
-            setTimeout(() => makeMove(result.moves[1].q, result.moves[1].r), 300);
+        try {
+          const result = await aiTrainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turn, 100);
+          
+          if (result.moves.length > 0) {
+            makeMove(result.moves[0].q, result.moves[0].r);
+            if (result.moves.length > 1) {
+              // Execute second move after a delay
+              await new Promise(resolve => setTimeout(resolve, 400));
+              makeMove(result.moves[1].q, result.moves[1].r);
+            }
           }
-        } else {
-          // If AI fails to find a valid move, make a random one to prevent freeze
-          console.warn("AI failed to find valid move, falling back to random.");
-          const randomQ = lastMove.q + (Math.floor(Math.random() * 3) - 1);
-          const randomR = lastMove.r + (Math.floor(Math.random() * 3) - 1);
-          makeMove(randomQ, randomR);
+        } finally {
+          aiProcessing.current = false;
         }
-      }, 800);
+      }, 1000);
       return () => clearTimeout(timer);
     }
   }, [gameMode, gameStarted, currentPlayer, userPlayer, board, winner, turn, focalRadii, history, makeMove]);

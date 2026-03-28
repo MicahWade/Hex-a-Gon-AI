@@ -12,45 +12,50 @@ export function useHexGame() {
   const [winner, setWinner] = useState<Player | null>(null);
 
   const makeMove = useCallback((q: number, r: number) => {
-    if (winner) return;
-    
-    // First move always becomes (0,0) regardless of where clicked
-    const targetQ = board.size === 0 ? 0 : q;
-    const targetR = board.size === 0 ? 0 : r;
+    // Use functional updates to ensure we always have the latest state
+    setBoard(currentBoard => {
+      if (winner) return currentBoard;
 
-    const key = coordToString({ q: targetQ, r: targetR });
-    if (board.has(key)) return;
+      // First move always becomes (0,0)
+      const targetQ = currentBoard.size === 0 ? 0 : q;
+      const targetR = currentBoard.size === 0 ? 0 : r;
+      const key = coordToString({ q: targetQ, r: targetR });
 
-    // Enforce that only current player's color is placed
-    const newMove: Move = {
-      player: currentPlayer,
-      coord: { q: targetQ, r: targetR },
-      turn,
-      moveInTurn: movesLeftInTurn === 1 ? (turn === 1 ? 1 : 2) : 1,
-      timestamp: Date.now()
-    };
+      if (currentBoard.has(key)) return currentBoard;
 
-    const newBoard = new Map(board);
-    newBoard.set(key, currentPlayer);
-    setBoard(newBoard);
-    setHistory(prev => [...prev, newMove]);
+      // Create new board
+      const nextBoard = new Map(currentBoard);
+      nextBoard.set(key, currentPlayer);
 
-    if (checkWin(newBoard, q, r, currentPlayer)) {
-      setWinner(currentPlayer);
-      return;
-    }
+      // We need to update other states based on this success
+      // Note: We are inside setBoard, so we use functional updates for others too
+      setHistory(prev => {
+        const moveInTurn = currentBoard.size === 0 ? 1 : (3 - movesLeftInTurn);
+        const newMove: Move = {
+          player: currentPlayer,
+          coord: { q: targetQ, r: targetR },
+          turn,
+          moveInTurn: moveInTurn,
+          timestamp: Date.now()
+        };
+        return [...prev, newMove];
+      });
 
-    if (movesLeftInTurn > 1) {
-      setMovesLeftInTurn(movesLeftInTurn - 1);
-    } else {
-      // Switch player
-      const nextPlayer = currentPlayer === 1 ? 2 : 1;
-      setCurrentPlayer(nextPlayer);
-      setTurn(prevTurn => prevTurn + 1);
-      // Turn 1: 1 move for P1. All subsequent turns have 2 moves.
-      setMovesLeftInTurn(2);
-    }
-  }, [board, currentPlayer, movesLeftInTurn, winner, turn]);
+      if (checkWin(nextBoard, targetQ, targetR, currentPlayer)) {
+        setWinner(currentPlayer);
+      } else {
+        if (movesLeftInTurn > 1) {
+          setMovesLeftInTurn(prev => prev - 1);
+        } else {
+          setCurrentPlayer(curr => (curr === 1 ? 2 : 1));
+          setTurn(t => t + 1);
+          setMovesLeftInTurn(2);
+        }
+      }
+
+      return nextBoard;
+    });
+  }, [currentPlayer, movesLeftInTurn, winner, turn]);
 
   const resetGame = useCallback(() => {
     setBoard(new Map());
