@@ -28,6 +28,7 @@ function App() {
   const [focalRadii, setFocalRadii] = useState({ global: 14, self: 8, memory: 6 });
   const [generations, setGenerations] = useState(0);
   const [loss, setLoss] = useState(0);
+  const [targetDepth, setTargetDepth] = useState(3);
 
   // PvAI States
   const [userPlayer, setUserPlayer] = useState<Player>(1);
@@ -233,6 +234,8 @@ function App() {
           setLayers={setNetworkArchitecture}
           focalRadii={focalRadii}
           setFocalRadii={setFocalRadii}
+          targetDepth={targetDepth}
+          setTargetDepth={setTargetDepth}
         />
       )}
       {activeTab === 'settings' && (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 interface FocalRadii {
   global: number;
@@ -11,11 +11,13 @@ interface Props {
   setLayers: (newLayers: number[]) => void;
   focalRadii: FocalRadii;
   setFocalRadii: React.Dispatch<React.SetStateAction<FocalRadii>>;
+  targetDepth: number;
+  setTargetDepth: (val: number) => void;
 }
 
-export const ModelConfig: React.FC<Props> = ({ layers, setLayers, focalRadii, setFocalRadii }) => {
-  const [targetDepth, setTargetDepth] = useState(3);
-
+export const ModelConfig: React.FC<Props> = ({ 
+  layers, setLayers, focalRadii, setFocalRadii, targetDepth, setTargetDepth 
+}) => {
   // Hexes in radius R = 3R(R+1) + 1
   const globalHexes = 3 * focalRadii.global * (focalRadii.global + 1) + 1;
   const selfHexes = 3 * focalRadii.self * (focalRadii.self + 1) + 1;
@@ -31,13 +33,13 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers, focalRadii, se
 
   const updateLayer = (index: number, val: number) => {
     const newLayers = [...layers];
-    newLayers[index] = Math.max(1, Math.min(2048, val ?? 1));
+    newLayers[index] = Math.max(1, Math.min(4096, val ?? 1));
     setLayers(newLayers);
   };
 
   const addLayer = () => {
-    if (layers.length < 15) {
-      setLayers([...layers, 256]);
+    if (layers.length < 20) {
+      setLayers([...layers, 512]);
     }
   };
 
@@ -50,13 +52,28 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers, focalRadii, se
 
   const applyRecommended = () => {
     const newLayers: number[] = [];
-    let currentSize = INPUT_NODES > 2000 ? 1024 : 512;
+    
+    // Advanced "Expansion-Funnel" Architecture logic
+    // We start with an expansion to map inputs to a high-dimensional feature space
+    // Then we funnel down to the specific output selection.
+    
     for (let i = 0; i < targetDepth; i++) {
-      newLayers.push(currentSize);
-      if (i === targetDepth - 2) {
-        currentSize = 512;
+      if (i === 0) {
+        // Initial Expansion (Large capacity to capture all 6 focal points)
+        newLayers.push(INPUT_NODES > 1500 ? 1024 : 512);
+      } else if (i === targetDepth - 1) {
+        // Final hidden layer (Resolution boost for the 2,712+ output)
+        newLayers.push(512);
       } else {
-        currentSize = Math.max(256, Math.floor(currentSize * 0.7));
+        // Middle layers (Staggered funnel)
+        const progress = i / targetDepth;
+        if (progress < 0.5) {
+          // Keep it wide in the middle
+          newLayers.push(newLayers[0]);
+        } else {
+          // Start the funnel
+          newLayers.push(Math.max(512, Math.floor(newLayers[0] * 0.75)));
+        }
       }
     }
     setLayers(newLayers);
@@ -113,7 +130,7 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers, focalRadii, se
                 <input 
                   type="number" 
                   value={targetDepth} 
-                  onChange={e => setTargetDepth(Math.max(1, Math.min(15, parseInt(e.target.value))))}
+                  onChange={e => setTargetDepth(Math.max(1, Math.min(20, parseInt(e.target.value))))}
                 />
               </div>
               <button className="recommend-btn" onClick={applyRecommended}>Auto-Fill</button>
@@ -136,7 +153,7 @@ export const ModelConfig: React.FC<Props> = ({ layers, setLayers, focalRadii, se
                 <button className="remove-layer-btn" onClick={() => removeLayer(i)}>&times;</button>
               </div>
             ))}
-            <button className="add-layer-btn" onClick={addLayer} disabled={layers.length >= 15}>
+            <button className="add-layer-btn" onClick={addLayer} disabled={layers.length >= 20}>
               + Add Layer Manually
             </button>
           </div>
