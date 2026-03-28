@@ -9,7 +9,7 @@ import { Settings } from './components/Settings';
 import { MoveLog } from './components/MoveLog';
 import { Trainer } from './ai/trainer';
 import { loadModelFromVault } from './ai/modelVault';
-import type { NotationType, LogPosition, Theme, Player } from './types';
+import type { NotationType, LogPosition, Theme, Player, Coord } from './types';
 import './App.css';
 
 type Tab = 'play' | 'rules' | 'ai' | 'architecture' | 'history' | 'settings';
@@ -61,13 +61,40 @@ function App() {
     if (gameMode === 'pvai' && gameStarted && !winner && currentPlayer !== userPlayer && aiTrainerRef.current) {
       const timer = setTimeout(async () => {
         const config = { epsilon: 0, rewards: {} } as any;
-        const foci = history.length > 0 ? [history[history.length - 1].coord] : [{ q: 0, r: 0 }];
-        // Pad foci to 6
-        while (foci.length < 6) foci.push({ q: 0, r: 0 });
+        
+        // Build Focal Windows from recent history
+        // Order: [Global, Self, P1_L1, P1_L2, P2_L1, P2_L2]
+        const p1History = history.filter(m => m.player === 1).reverse();
+        const p2History = history.filter(m => m.player === 2).reverse();
+        
+        const lastMove = history.length > 0 ? history[history.length - 1].coord : { q: 0, r: 0 };
+        const aiLastMove = (userPlayer === 1 ? p2History : p1History)[0]?.coord || { q: 0, r: 0 };
+
+        const foci: Coord[] = [
+          lastMove, // Global
+          aiLastMove, // Self
+          p1History[0]?.coord || { q: 0, r: 0 },
+          p1History[1]?.coord || { q: 0, r: 0 },
+          p2History[0]?.coord || { q: 0, r: 0 },
+          p2History[1]?.coord || { q: 0, r: 0 }
+        ];
 
         const result = await aiTrainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turn, 100);
-        result.moves.forEach(m => makeMove(m.q, m.r));
-      }, 600);
+        
+        // Execute moves with a small delay between them for visual clarity
+        if (result.moves.length > 0) {
+          makeMove(result.moves[0].q, result.moves[0].r);
+          if (result.moves.length > 1) {
+            setTimeout(() => makeMove(result.moves[1].q, result.moves[1].r), 300);
+          }
+        } else {
+          // If AI fails to find a valid move, make a random one to prevent freeze
+          console.warn("AI failed to find valid move, falling back to random.");
+          const randomQ = lastMove.q + (Math.floor(Math.random() * 3) - 1);
+          const randomR = lastMove.r + (Math.floor(Math.random() * 3) - 1);
+          makeMove(randomQ, randomR);
+        }
+      }, 800);
       return () => clearTimeout(timer);
     }
   }, [gameMode, gameStarted, currentPlayer, userPlayer, board, winner, turn, focalRadii, history, makeMove]);
@@ -159,7 +186,10 @@ function App() {
           <HexBoard
             board={board}
             onMove={(q, r) => {
-              if (gameMode === 'pvp' || (gameStarted && currentPlayer === userPlayer)) {
+              // Lock board if it's not the user's turn
+              if (gameMode === 'pvp') {
+                makeMove(q, r);
+              } else if (gameStarted && currentPlayer === userPlayer) {
                 makeMove(q, r);
               }
             }}

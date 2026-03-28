@@ -21,6 +21,7 @@ export function useHexGame() {
     const key = coordToString({ q: targetQ, r: targetR });
     if (board.has(key)) return;
 
+    // Enforce that only current player's color is placed
     const newMove: Move = {
       player: currentPlayer,
       coord: { q: targetQ, r: targetR },
