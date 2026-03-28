@@ -35,8 +35,8 @@ export const AITraining: React.FC<Props> = ({
   const [epsilon, setEpsilon] = useState(0.2);
 
   const [rewards, setRewards] = useState({
-    p1Win: 1.0,
-    p2Win: 1.1,
+    p1Win: 2.0,
+    p2Win: 2.2,
     p1Draw: 0.4,
     p2Draw: 0.6,
     threat: 0.02,
@@ -254,15 +254,41 @@ export const AITraining: React.FC<Props> = ({
         }
       }
 
-      gameHistory.forEach(exp => {
-        let reward = rewards.efficiency;
-        if (winner) {
-          if (exp.player === winner) reward += (winner === 1 ? rewards.p1Win : rewards.p2Win);
-          else reward -= 1.0;
-        } else {
-          reward += (exp.player === 1 ? rewards.p1Draw : rewards.p2Draw);
+      // Advanced Reward Distribution Logic
+      let totalP1Reward = 0;
+      let totalP2Reward = 0;
+
+      const playerResults = [1, 2].map(p => {
+        const pExps = gameHistory.filter(exp => exp.player === p);
+        const base = winner 
+          ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0)
+          : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
+        
+        // Calculate cumulative move bonuses (threats/efficiency)
+        // For now we use a simplified mock for threat detection within the loop
+        let bonus = pExps.length * rewards.efficiency; 
+        
+        // Apply 50% Cap Rule
+        const cap = Math.abs(base) * 0.5;
+        const clampedBonus = Math.max(-cap, Math.min(cap, bonus));
+        
+        return { player: p, experiences: pExps, total: base + clampedBonus };
+      });
+
+      // Championship Floor Rule: Winner MUST have most points
+      if (winner) {
+        const winIdx = playerResults.findIndex(r => r.player === winner);
+        const loseIdx = playerResults.findIndex(r => r.player !== winner);
+        if (playerResults[winIdx].total <= playerResults[loseIdx].total) {
+          playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
         }
-        trainerRef.current!.addToMemory(exp.state, exp.action, reward, null);
+      }
+
+      // Add to Memory
+      playerResults.forEach(res => {
+        res.experiences.forEach(exp => {
+          trainerRef.current!.addToMemory(exp.state, exp.action, res.total, null);
+        });
       });
 
       if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
