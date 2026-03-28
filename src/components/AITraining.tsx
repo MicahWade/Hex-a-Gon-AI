@@ -119,7 +119,10 @@ export const AITraining: React.FC<Props> = ({
       outputNodes,
       hiddenLayers: layers,
       focalRadii: { ...focalRadii },
-      generation: generations
+      generation: generations,
+      maxTurns,
+      batchSize,
+      epsilon
     };
 
     await saveModelToVault(modelRef.current, meta);
@@ -136,7 +139,10 @@ export const AITraining: React.FC<Props> = ({
         setLayers(meta.hiddenLayers);
         if (meta.focalRadii) setFocalRadii(meta.focalRadii);
         if (meta.generation !== undefined) setGenerations(meta.generation);
-        addLog(`[System] Synced Architecture & Gen ${meta.generation} for '${name}'.`);
+        if (meta.maxTurns !== undefined) setMaxTurns(meta.maxTurns);
+        if (meta.batchSize !== undefined) setBatchSize(meta.batchSize);
+        if (meta.epsilon !== undefined) setEpsilon(meta.epsilon);
+        addLog(`[System] Synced Architecture, Stats & Settings for '${name}'.`);
       }
       initTrainer(model);
       if (trainerRef.current) trainerRef.current.clearMemory();
