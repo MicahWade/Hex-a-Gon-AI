@@ -14,18 +14,16 @@ export function useHexGame() {
   const makeMove = useCallback((q: number, r: number) => {
     if (winner) return;
     
-    // First move must be (0,0)
-    if (board.size === 0 && (q !== 0 || r !== 0)) {
-      console.warn('First move must be at (0,0)');
-      return;
-    }
+    // First move always becomes (0,0) regardless of where clicked
+    const targetQ = board.size === 0 ? 0 : q;
+    const targetR = board.size === 0 ? 0 : r;
 
-    const key = coordToString({ q, r });
+    const key = coordToString({ q: targetQ, r: targetR });
     if (board.has(key)) return;
 
     const newMove: Move = {
       player: currentPlayer,
-      coord: { q, r },
+      coord: { q: targetQ, r: targetR },
       turn,
       moveInTurn: movesLeftInTurn === 1 ? (turn === 1 ? 1 : 2) : 1,
       timestamp: Date.now()

@@ -28,6 +28,7 @@ export const AITraining: React.FC<Props> = ({
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
   const [maxTurns, setMaxTurns] = useState(100);
+  const [batchSize, setBatchSize] = useState(64);
   const [epsilon, setEpsilon] = useState(0.2);
 
   const [rewards, setRewards] = useState({
@@ -160,7 +161,6 @@ export const AITraining: React.FC<Props> = ({
       const opponentModel = await loadModelFromVault(opponentName);
       const opponentMeta = vault.find(m => m.name === opponentName);
       
-      // Verification: Opponent must match current focal windows for a fair match
       if (opponentMeta && (
         opponentMeta.focalRadii.global !== focalRadii.global ||
         opponentMeta.focalRadii.self !== focalRadii.self ||
@@ -173,7 +173,7 @@ export const AITraining: React.FC<Props> = ({
 
       let p1Wins = 0;
       let p2Wins = 0;
-      const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards };
+      const config: TrainingConfig = { learningRate: 0.001, batchSize, gamma: 0.95, epsilon: 0, rewards };
 
       for (let g = 0; g < 10; g++) {
         let board: BoardState = new Map();
@@ -213,7 +213,7 @@ export const AITraining: React.FC<Props> = ({
 
     const runCycle = async () => {
       const config: TrainingConfig = { 
-        learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: epsilon, rewards 
+        learningRate: 0.001, batchSize, gamma: 0.95, epsilon: epsilon, rewards 
       };
       let board: BoardState = new Map();
       let currentPlayer: Player = 1;
@@ -224,21 +224,32 @@ export const AITraining: React.FC<Props> = ({
       const gameHistory: { state: number[], action: number, player: Player }[] = [];
 
       while (!winner && turns < maxTurns && active && isTraining) {
-        const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
-        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
-        
-        result.actionIndices.forEach(actionIdx => {
-          gameHistory.push({ state: stateBefore, action: actionIdx, player: currentPlayer });
-        });
+        // AI makes sequential moves
+        const moveCount = board.size === 0 ? 1 : 2;
+        for (let m = 0; m < moveCount; m++) {
+          const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
+          const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: m === 0 ? epsilon : 0 }, turns, maxTurns);
+          
+          // Record move
+          if (result.actionIndices.length > 0) {
+            gameHistory.push({ state: stateBefore, action: result.actionIndices[0], player: currentPlayer });
+          }
 
-        board = result.board;
-        winner = result.winner;
-        if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
+          board = result.board;
+          winner = result.winner;
+          if (result.moves.length > 0) {
+            const latestMove = result.moves[result.moves.length - 1];
+            foci[0] = latestMove;
+          }
+          
+          if (winner) break;
+        }
+
         currentPlayer = currentPlayer === 1 ? 2 : 1;
         turns++;
 
         if (turns % 5 === 0) {
-          const l = await trainerRef.current!.trainBatch(64);
+          const l = await trainerRef.current!.trainBatch(batchSize);
           if (l) setLoss(l);
         }
       }
@@ -261,7 +272,7 @@ export const AITraining: React.FC<Props> = ({
     };
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns, focalRadii, epsilon]);
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize]);
 
   return (
     <div className="tab-content ai-view">
@@ -278,6 +289,10 @@ export const AITraining: React.FC<Props> = ({
             <div className="mini-input-row">
               <label>Max Turns</label>
               <input type="number" value={maxTurns || 0} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" />
+            </div>
+            <div className="mini-input-row">
+              <label>Batch Size</label>
+              <input type="number" value={batchSize || 0} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} step={32} min="32" max="512" />
             </div>
             <div className="mini-input-row">
               <label>Randomness</label>

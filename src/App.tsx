@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import * as tf from '@tensorflow/tfjs';
 import { useHexGame } from './hooks/useHexGame';
 import { HexBoard } from './components/HexBoard';
 import { Rules } from './components/Rules';
@@ -6,7 +7,9 @@ import { AITraining } from './components/AITraining';
 import { ModelConfig } from './components/ModelConfig';
 import { Settings } from './components/Settings';
 import { MoveLog } from './components/MoveLog';
-import type { NotationType, LogPosition, Theme } from './types';
+import { Trainer } from './ai/trainer';
+import { loadModelFromVault } from './ai/modelVault';
+import type { NotationType, LogPosition, Theme, Player } from './types';
 import './App.css';
 
 type Tab = 'play' | 'rules' | 'ai' | 'architecture' | 'history' | 'settings';
@@ -24,6 +27,11 @@ function App() {
   const [networkArchitecture, setNetworkArchitecture] = useState<number[]>([1024, 1024, 512, 256]);
   const [focalRadii, setFocalRadii] = useState({ global: 14, self: 8, memory: 6 });
 
+  // PvAI States
+  const [userPlayer, setUserPlayer] = useState<Player>(1);
+  const [gameStarted, setGameStarted] = useState(false);
+  const aiTrainerRef = useRef<Trainer | null>(null);
+
   const {
     board,
     history,
@@ -34,6 +42,49 @@ function App() {
     makeMove,
     resetGame
   } = useHexGame();
+
+  // Load AI for PvAI mode
+  useEffect(() => {
+    const loadAI = async () => {
+      try {
+        const model = await tf.loadLayersModel('indexeddb://hex-a-gon-model');
+        aiTrainerRef.current = new Trainer(model);
+      } catch (e) {
+        console.warn("No trained AI found for PvAI mode.");
+      }
+    };
+    if (gameMode === 'pvai') loadAI();
+  }, [gameMode]);
+
+  // Handle AI turn
+  useEffect(() => {
+    if (gameMode === 'pvai' && gameStarted && !winner && currentPlayer !== userPlayer && aiTrainerRef.current) {
+      const timer = setTimeout(async () => {
+        const config = { epsilon: 0, rewards: {} } as any;
+        const foci = history.length > 0 ? [history[history.length - 1].coord] : [{ q: 0, r: 0 }];
+        // Pad foci to 6
+        while (foci.length < 6) foci.push({ q: 0, r: 0 });
+
+        const result = await aiTrainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turn, 100);
+        result.moves.forEach(m => makeMove(m.q, m.r));
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [gameMode, gameStarted, currentPlayer, userPlayer, board, winner, turn, focalRadii, history, makeMove]);
+
+  const handleStartGame = () => {
+    let finalUserPlayer = userPlayer;
+    if ((userPlayer as any) === 'random') {
+      finalUserPlayer = Math.random() > 0.5 ? 1 : 2;
+      setUserPlayer(finalUserPlayer);
+    }
+    setGameStarted(true);
+  };
+
+  const handleReset = () => {
+    resetGame();
+    setGameStarted(false);
+  };
 
   return (
     <div 
@@ -57,43 +108,43 @@ function App() {
           <div className="ui-overlay">
             <h1>Hex-A-Gon</h1>
             <div className="game-mode-selector">
-              <button 
-                className={gameMode === 'pvp' ? 'active-mode' : ''} 
-                onClick={() => setGameMode('pvp')}
-              >
-                PvP
-              </button>
-              <button 
-                className={gameMode === 'pvai' ? 'active-mode' : ''} 
-                onClick={() => setGameMode('pvai')}
-              >
-                PvAI
-              </button>
+              <button className={gameMode === 'pvp' ? 'active-mode' : ''} onClick={() => { setGameMode('pvp'); setGameStarted(false); }}>PvP</button>
+              <button className={gameMode === 'pvai' ? 'active-mode' : ''} onClick={() => { setGameMode('pvai'); setGameStarted(false); }}>PvAI</button>
             </div>
-            <div className="status">
-              {winner ? (
-                <div className="winner-announcement">
-                  <h2 className={winner === 1 ? 'p1' : 'p2'}>
-                    Player {winner} Wins!
-                  </h2>
-                  <button onClick={resetGame}>New Game</button>
+
+            {gameMode === 'pvai' && !gameStarted && (
+              <div className="pvai-setup card">
+                <h3>Select Your Side</h3>
+                <div className="player-picker">
+                  <button className={userPlayer === 1 ? 'active-p1' : ''} onClick={() => setUserPlayer(1)}>Blue (P1)</button>
+                  <button className={userPlayer === 2 ? 'active-p2' : ''} onClick={() => setUserPlayer(2)}>Red (P2)</button>
+                  <button className={(userPlayer as any) === 'random' ? 'active-rand' : ''} onClick={() => setUserPlayer('random' as any)}>Random</button>
                 </div>
-              ) : (
-                <div className="turn-info">
-                  <p>
-                    Turn {turn} - <span className={currentPlayer === 1 ? 'p1' : 'p2'}>
-                      Player {currentPlayer}
-                    </span>
-                  </p>
-                  <p>Moves left: {movesLeftInTurn}</p>
-                </div>
-              )}
-            </div>
+                <button className="start-game-btn" onClick={handleStartGame}>Start Game</button>
+              </div>
+            )}
+
+            {(gameMode === 'pvp' || gameStarted) && (
+              <div className="status">
+                {winner ? (
+                  <div className="winner-announcement">
+                    <h2 className={winner === 1 ? 'p1' : 'p2'}>Player {winner} Wins!</h2>
+                    <button onClick={handleReset}>New Game</button>
+                  </div>
+                ) : (
+                  <div className="turn-info">
+                    <p>Turn {turn} - <span className={currentPlayer === 1 ? 'p1' : 'p2'}>Player {currentPlayer}</span></p>
+                    <p>Moves left: {movesLeftInTurn}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="instructions">
               <p>6 in a row to win.</p>
               <p>Click to place. Drag to pan. Scroll to zoom.</p>
             </div>
-            {!winner && <button onClick={resetGame} className="reset-btn">Reset</button>}
+            {!winner && <button onClick={handleReset} className="reset-btn">Reset</button>}
           </div>
           
           <MoveLog 
@@ -107,7 +158,11 @@ function App() {
           
           <HexBoard
             board={board}
-            onMove={makeMove}
+            onMove={(q, r) => {
+              if (gameMode === 'pvp' || (gameStarted && currentPlayer === userPlayer)) {
+                makeMove(q, r);
+              }
+            }}
             currentPlayer={currentPlayer}
             winner={winner}
             p1Color={p1Color}

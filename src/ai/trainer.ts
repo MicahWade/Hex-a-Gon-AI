@@ -51,11 +51,24 @@ export class Trainer {
     const modelToUse = specificModel || this.model;
 
     // AI makes sequential moves
-    const moveCount = board.size === 0 ? 1 : 2;
+    const isFirstMove = board.size === 0;
+    const moveCount = isFirstMove ? 1 : 2;
+    
     for (let i = 0; i < moveCount; i++) {
       const state = encodeState(currentBoard, player, foci, radii, turn, maxTurns);
-      const action = await this.predictAction(state, config.epsilon, modelToUse);
-      const move = decodeMove(action, foci, radii);
+      let action: number;
+      let move: Coord;
+
+      if (isFirstMove) {
+        // Force (0,0) for the very first move of the game
+        move = { q: 0, r: 0 };
+        // We still need an action index for the memory buffer
+        // We'll find the index that corresponds to the focus (which is 0,0 at start)
+        action = 0; 
+      } else {
+        action = await this.predictAction(state, config.epsilon, modelToUse);
+        move = decodeMove(action, foci, radii);
+      }
 
       actionIndices.push(action);
       const key = coordToString(move);
