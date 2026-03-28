@@ -86,6 +86,18 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
     addLog(`[System] New model initialized (${inputNodes} in, ${outputNodes} out).`);
   };
 
+  const toggleTraining = async () => {
+    if (!isTraining) {
+      if (!modelRef.current) {
+        handleCreateNew();
+      }
+      addLog("[System] Training resumed.");
+    } else {
+      addLog("[System] Training paused.");
+    }
+    setIsTraining(!isTraining);
+  };
+
   const handleSave = async () => {
     if (!modelRef.current) return;
     const name = prompt("Enter model name:", currentModelName) || currentModelName;
@@ -252,7 +264,7 @@ export const AITraining: React.FC<Props> = ({ isTraining, setIsTraining, layers,
               <input type="number" value={epsilon} onChange={e => setEpsilon(parseSafeFloat(e.target.value))} step={0.05} min="0" max="1" />
             </div>
             <div className="action-buttons">
-              <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={() => setIsTraining(!isTraining)}>
+              <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>
                 {isTraining ? 'Stop Training' : 'Start Training'}
               </button>
               <button className="reset-btn" onClick={handleSave}>Save to Vault</button>
