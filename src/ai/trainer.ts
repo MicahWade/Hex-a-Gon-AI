@@ -60,23 +60,41 @@ export class Trainer {
       let move: Coord;
 
       if (isFirstMove) {
-        // Force (0,0) for the very first move of the game
         move = { q: 0, r: 0 };
-        // We still need an action index for the memory buffer
-        // We'll find the index that corresponds to the focus (which is 0,0 at start)
         action = 0; 
       } else {
-        action = await this.predictAction(state, config.epsilon, modelToUse);
-        move = decodeMove(action, foci, radii);
+        const prediction = await this.predictAction(state, config.epsilon, modelToUse);
+        
+        if (typeof prediction === 'number') {
+          // Random epsilon move
+          action = prediction;
+          move = decodeMove(action, foci, radii);
+        } else {
+          // Search for first valid move in sorted list
+          let foundValid = false;
+          for (const option of prediction) {
+            const candidate = decodeMove(option.idx, foci, radii);
+            if (!currentBoard.has(coordToString(candidate))) {
+              action = option.idx;
+              move = candidate;
+              foundValid = true;
+              break;
+            }
+          }
+          if (!foundValid) {
+            action = 0;
+            move = foci[0];
+          }
+        }
       }
 
       actionIndices.push(action);
-      const key = coordToString(move);
+      const key = coordToString(move!);
       if (!currentBoard.has(key)) {
         currentBoard.set(key, player);
-        moves.push(move);
+        moves.push(move!);
 
-        if (checkWin(currentBoard, move.q, move.r, player)) {
+        if (checkWin(currentBoard, move!.q, move!.r, player)) {
           winner = player;
           break;
         }
@@ -86,7 +104,7 @@ export class Trainer {
     return { board: currentBoard, moves, winner, actionIndices };
   }
 
-  private async predictAction(state: number[], epsilon: number, modelOverride?: tf.LayersModel): Promise<number> {
+  private async predictAction(state: number[], epsilon: number, modelOverride?: tf.LayersModel): Promise<{prob: number, idx: number}[] | number> {
     const model = modelOverride || this.model;
     const inputSize = model.inputs[0].shape[1] as number;
     const outputSize = model.outputs[0].shape[1] as number;
@@ -107,7 +125,11 @@ export class Trainer {
       const inputData = new Float32Array(adaptedState);
       const input = tf.tensor2d(inputData, [1, inputSize]);
       const prediction = model.predict(input) as tf.Tensor;
-      return prediction.argMax(1).dataSync()[0];
+      
+      const probs = prediction.dataSync();
+      return Array.from(probs)
+        .map((prob, idx) => ({ prob, idx }))
+        .sort((a, b) => b.prob - a.prob);
     });
   }
 

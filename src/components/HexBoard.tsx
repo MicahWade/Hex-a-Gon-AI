@@ -10,12 +10,13 @@ interface Props {
   winner: Player | null;
   p1Color: string;
   p2Color: string;
+  showHover?: boolean;
 }
 
 const BASE_HEX_SIZE = 30;
 
 export const HexBoard: React.FC<Props> = ({ 
-  board, onMove, currentPlayer, winner, p1Color, p2Color 
+  board, onMove, currentPlayer, winner, p1Color, p2Color, showHover = true 
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
@@ -42,7 +43,7 @@ export const HexBoard: React.FC<Props> = ({
       ctx.strokeStyle = '#2c3e50';
       ctx.lineWidth = 2;
       ctx.stroke();
-    } else if (isHovered && !winner) {
+    } else if (isHovered && !winner && showHover) {
       ctx.fillStyle = currentPlayer === 1 ? `${p1Color}4D` : `${p2Color}4D`;
       ctx.fill();
       ctx.strokeStyle = '#95a5a6';

@@ -197,6 +197,7 @@ function App() {
             winner={winner}
             p1Color={p1Color}
             p2Color={p2Color}
+            showHover={gameMode === 'pvp' || (gameStarted && currentPlayer === userPlayer)}
           />
         </div>
       )}
