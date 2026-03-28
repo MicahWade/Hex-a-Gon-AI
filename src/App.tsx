@@ -26,6 +26,8 @@ function App() {
   const [isTraining, setIsTraining] = useState(false);
   const [networkArchitecture, setNetworkArchitecture] = useState<number[]>([1024, 1024, 512, 256]);
   const [focalRadii, setFocalRadii] = useState({ global: 14, self: 8, memory: 6 });
+  const [generations, setGenerations] = useState(0);
+  const [loss, setLoss] = useState(0);
 
   // PvAI States
   const [userPlayer, setUserPlayer] = useState<Player>(1);
@@ -219,6 +221,10 @@ function App() {
           setLayers={setNetworkArchitecture}
           focalRadii={focalRadii}
           setFocalRadii={setFocalRadii}
+          generations={generations}
+          setGenerations={setGenerations}
+          loss={loss}
+          setLoss={setLoss}
         />
       )}
       {activeTab === 'architecture' && (

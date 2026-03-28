@@ -7,6 +7,7 @@ export interface ModelMetadata {
   outputNodes: number;
   hiddenLayers: number[];
   focalRadii: { global: number; self: number; memory: number };
+  generation: number;
 }
 
 const METADATA_KEY = 'hexagon-model-vault-metadata';

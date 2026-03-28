@@ -15,13 +15,16 @@ interface Props {
   setLayers: (newLayers: number[]) => void;
   focalRadii: { global: number; self: number; memory: number };
   setFocalRadii: React.Dispatch<React.SetStateAction<{ global: number; self: number; memory: number }>>;
+  generations: number;
+  setGenerations: React.Dispatch<React.SetStateAction<number>>;
+  loss: number;
+  setLoss: React.Dispatch<React.SetStateAction<number>>;
 }
 
 export const AITraining: React.FC<Props> = ({ 
-  isTraining, setIsTraining, layers, setLayers, focalRadii, setFocalRadii 
+  isTraining, setIsTraining, layers, setLayers, focalRadii, setFocalRadii,
+  generations, setGenerations, loss, setLoss
 }) => {
-  const [generations, setGenerations] = useState(0);
-  const [loss, setLoss] = useState<number>(0);
   const [logs, setLog] = useState<string[]>(["[System] Ready for training."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
   const [currentModelName, setCurrentModelName] = useState<string>("default-model");
@@ -87,6 +90,8 @@ export const AITraining: React.FC<Props> = ({
       learningRate: 0.001
     });
     initTrainer(model);
+    setGenerations(0);
+    setLoss(0);
     addLog(`[System] New model initialized (${inputNodes} in, ${outputNodes} out).`);
   };
 
@@ -113,13 +118,14 @@ export const AITraining: React.FC<Props> = ({
       inputNodes,
       outputNodes,
       hiddenLayers: layers,
-      focalRadii: { ...focalRadii }
+      focalRadii: { ...focalRadii },
+      generation: generations
     };
 
     await saveModelToVault(modelRef.current, meta);
     setCurrentModelName(name);
     setVault(getVaultMetadata());
-    addLog(`[System] Model '${name}' saved.`);
+    addLog(`[System] Model '${name}' saved at Gen ${generations}.`);
   };
 
   const handleLoad = async (name: string) => {
@@ -128,10 +134,9 @@ export const AITraining: React.FC<Props> = ({
       const meta = vault.find(m => m.name === name);
       if (meta) {
         setLayers(meta.hiddenLayers);
-        if (meta.focalRadii) {
-          setFocalRadii(meta.focalRadii);
-        }
-        addLog(`[System] Synced Architecture & Vision for '${name}'.`);
+        if (meta.focalRadii) setFocalRadii(meta.focalRadii);
+        if (meta.generation !== undefined) setGenerations(meta.generation);
+        addLog(`[System] Synced Architecture & Gen ${meta.generation} for '${name}'.`);
       }
       initTrainer(model);
       if (trainerRef.current) trainerRef.current.clearMemory();
@@ -173,7 +178,7 @@ export const AITraining: React.FC<Props> = ({
 
       let p1Wins = 0;
       let p2Wins = 0;
-      const config: TrainingConfig = { learningRate: 0.001, batchSize, gamma: 0.95, epsilon: 0, rewards };
+      const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards };
 
       for (let g = 0; g < 10; g++) {
         let board: BoardState = new Map();
@@ -213,7 +218,7 @@ export const AITraining: React.FC<Props> = ({
 
     const runCycle = async () => {
       const config: TrainingConfig = { 
-        learningRate: 0.001, batchSize, gamma: 0.95, epsilon: epsilon, rewards 
+        learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: epsilon, rewards 
       };
       let board: BoardState = new Map();
       let currentPlayer: Player = 1;
@@ -224,27 +229,16 @@ export const AITraining: React.FC<Props> = ({
       const gameHistory: { state: number[], action: number, player: Player }[] = [];
 
       while (!winner && turns < maxTurns && active && isTraining) {
-        // AI makes sequential moves
-        const moveCount = board.size === 0 ? 1 : 2;
-        for (let m = 0; m < moveCount; m++) {
-          const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
-          const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: m === 0 ? epsilon : 0 }, turns, maxTurns);
-          
-          // Record move
-          if (result.actionIndices.length > 0) {
-            gameHistory.push({ state: stateBefore, action: result.actionIndices[0], player: currentPlayer });
-          }
+        const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
+        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
+        
+        result.actionIndices.forEach(actionIdx => {
+          gameHistory.push({ state: stateBefore, action: actionIdx, player: currentPlayer });
+        });
 
-          board = result.board;
-          winner = result.winner;
-          if (result.moves.length > 0) {
-            const latestMove = result.moves[result.moves.length - 1];
-            foci[0] = latestMove;
-          }
-          
-          if (winner) break;
-        }
-
+        board = result.board;
+        winner = result.winner;
+        if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
         currentPlayer = currentPlayer === 1 ? 2 : 1;
         turns++;
 
@@ -272,7 +266,7 @@ export const AITraining: React.FC<Props> = ({
     };
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize]);
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, setGenerations, setLoss]);
 
   return (
     <div className="tab-content ai-view">
@@ -329,7 +323,10 @@ export const AITraining: React.FC<Props> = ({
               {vault.length === 0 && <p className="no-moves">No saved models.</p>}
               {vault.map(m => (
                 <div key={m.name} className="vault-item">
-                  <div className="vault-info"><strong>{m.name}</strong><span>{new Date(m.timestamp).toLocaleDateString()}</span></div>
+                  <div className="vault-info">
+                    <strong>{m.name}</strong>
+                    <span>{new Date(m.timestamp).toLocaleDateString()} • Gen {m.generation}</span>
+                  </div>
                   <div className="vault-actions">
                     <button onClick={() => handleLoad(m.name)}>Load</button>
                     <button className="delete-btn" onClick={() => handleDelete(m.name)}>&times;</button>
