@@ -19,15 +19,17 @@ interface Props {
   setGenerations: React.Dispatch<React.SetStateAction<number>>;
   loss: number;
   setLoss: React.Dispatch<React.SetStateAction<number>>;
+  currentModelName: string;
+  setCurrentModelName: (name: string) => void;
 }
 
 export const AITraining: React.FC<Props> = ({ 
   isTraining, setIsTraining, layers, setLayers, focalRadii, setFocalRadii,
-  generations, setGenerations, loss, setLoss
+  generations, setGenerations, loss, setLoss,
+  currentModelName, setCurrentModelName
 }) => {
   const [logs, setLog] = useState<string[]>(["[System] Ready for training."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
-  const [currentModelName, setCurrentModelName] = useState<string>("default-model");
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
   const [maxTurns, setMaxTurns] = useState(100);

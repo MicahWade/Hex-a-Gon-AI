@@ -29,6 +29,7 @@ function App() {
   const [generations, setGenerations] = useState(0);
   const [loss, setLoss] = useState(0);
   const [targetDepth, setTargetDepth] = useState(3);
+  const [activeModelName, setActiveModelName] = useState<string>("default-model");
 
   // PvAI States
   const [userPlayer, setUserPlayer] = useState<Player>(1);
@@ -140,6 +141,11 @@ function App() {
         <div className="game-view">
           <div className="ui-overlay">
             <h1>Hex-A-Gon</h1>
+            {gameMode === 'pvai' && (
+              <div className="active-ai-indicator">
+                🤖 AI: <strong>{activeModelName}</strong>
+              </div>
+            )}
             <div className="game-mode-selector">
               <button className={gameMode === 'pvp' ? 'active-mode' : ''} onClick={() => { setGameMode('pvp'); setGameStarted(false); }}>PvP</button>
               <button className={gameMode === 'pvai' ? 'active-mode' : ''} onClick={() => { setGameMode('pvai'); setGameStarted(false); }}>PvAI</button>
@@ -229,6 +235,8 @@ function App() {
           setGenerations={setGenerations}
           loss={loss}
           setLoss={setLoss}
+          currentModelName={activeModelName}
+          setCurrentModelName={setActiveModelName}
         />
       )}
       {activeTab === 'architecture' && (

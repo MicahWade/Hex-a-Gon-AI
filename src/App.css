@@ -848,9 +848,20 @@ button:hover {
   transition: all 0.2s;
 }
 
-.recommend-btn:hover {
-  background: #2ecc71;
+.active-ai-indicator {
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 15px;
+  border: 1px solid rgba(46, 204, 113, 0.3);
+  text-align: center;
+}
+
+.active-ai-indicator strong {
   color: white;
+  margin-left: 5px;
 }
 
 .model-badge {
