@@ -36,6 +36,7 @@ export const AITraining: React.FC<Props> = ({
   const [maxTurns, setMaxTurns] = useState(100);
   const [batchSize, setBatchSize] = useState(64);
   const [epsilon, setEpsilon] = useState(0.2);
+  const [autoSaveFreq, setAutoSaveFreq] = useState(10); // Auto-save every 10 gens
 
   const [rewards, setRewards] = useState({
     p1Win: 2.0,
@@ -95,14 +96,12 @@ export const AITraining: React.FC<Props> = ({
     initTrainer(model);
     setGenerations(0);
     setLoss(0);
-    addLog(`[System] New model: ${inputNodes} in -> [${layers.join(',')}] -> ${outputNodes} out`);
+    addLog(`[System] New model initialized.`);
   };
 
   const toggleTraining = async () => {
     if (!isTraining) {
-      if (!modelRef.current) {
-        handleCreateNew();
-      }
+      if (!modelRef.current) handleCreateNew();
       addLog("[System] Training resumed.");
     } else {
       addLog("[System] Training paused.");
@@ -110,9 +109,9 @@ export const AITraining: React.FC<Props> = ({
     setIsTraining(!isTraining);
   };
 
-  const handleSave = async () => {
+  const performSave = async (isAuto = false) => {
     if (!modelRef.current) return;
-    const name = prompt("Enter model name:", currentModelName) || currentModelName;
+    const name = isAuto ? currentModelName : (prompt("Enter model name:", currentModelName) || currentModelName);
     const { inputNodes, outputNodes } = getIOConfig();
 
     const meta: ModelMetadata = {
@@ -129,9 +128,9 @@ export const AITraining: React.FC<Props> = ({
     };
 
     await saveModelToVault(modelRef.current, meta);
-    setCurrentModelName(name);
+    if (!isAuto) setCurrentModelName(name);
     setVault(getVaultMetadata());
-    addLog(`[System] Saved '${name}' (${inputNodes} in, [${layers.join(',')}] hidden, ${outputNodes} out)`);
+    addLog(`[System] Model '${name}' saved ${isAuto ? '(Auto)' : ''}.`);
   };
 
   const handleLoad = async (name: string) => {
@@ -145,12 +144,11 @@ export const AITraining: React.FC<Props> = ({
         if (meta.maxTurns !== undefined) setMaxTurns(meta.maxTurns);
         if (meta.batchSize !== undefined) setBatchSize(meta.batchSize);
         if (meta.epsilon !== undefined) setEpsilon(meta.epsilon);
-        addLog(`[System] Synced Architecture, Stats & Settings for '${name}'.`);
       }
       initTrainer(model);
       if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
-      addLog(`[System] Loaded '${name}' (${meta?.inputNodes} in, [${meta?.hiddenLayers.join(',')}] hidden, ${meta?.outputNodes} out)`);
+      addLog(`[System] Model '${name}' loaded.`);
     } catch (e) {
       addLog(`[Error] Failed to load '${name}'.`);
     }
@@ -180,7 +178,7 @@ export const AITraining: React.FC<Props> = ({
         opponentMeta.focalRadii.self !== focalRadii.self ||
         opponentMeta.focalRadii.memory !== focalRadii.memory
       )) {
-        addLog("[Error] Opponent vision radii do not match current model. Championship cancelled.");
+        addLog("[Error] Opponent vision radii mismatch.");
         setIsChampionship(false);
         return;
       }
@@ -194,13 +192,11 @@ export const AITraining: React.FC<Props> = ({
         let currentPlayer: Player = 1;
         let winner: Player | null = null;
         let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
-        const modelIsP1 = g < 5;
         let turns = 0;
+        const modelIsP1 = g < 5;
 
         while (!winner && board.size < maxTurns * 2) {
-          const m = (currentPlayer === 1 && modelIsP1) || (currentPlayer === 2 && !modelIsP1) 
-            ? modelRef.current : opponentModel;
-          
+          const m = (currentPlayer === 1 && modelIsP1) || (currentPlayer === 2 && !modelIsP1) ? modelRef.current : opponentModel;
           const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns, m);
           board = result.board;
           winner = result.winner;
@@ -216,7 +212,7 @@ export const AITraining: React.FC<Props> = ({
         setChampResults({ p1: p1Wins, p2: p2Wins });
       }
     } catch (e) {
-      addLog("[Error] Champ match failed.");
+      addLog("[Error] Champ failed.");
     }
     setIsChampionship(false);
   };
@@ -226,138 +222,111 @@ export const AITraining: React.FC<Props> = ({
     if (!isTraining || !trainerRef.current) return;
 
     const runCycle = async () => {
-      const config: TrainingConfig = { 
-        learningRate: 0.001, batchSize, gamma: 0.95, epsilon: epsilon, rewards 
-      };
-      let board: BoardState = new Map();
-      let currentPlayer: Player = 1;
-      let winner: Player | null = null;
-      let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
-      let turns = 0;
+      try {
+        const config: TrainingConfig = { learningRate: 0.001, batchSize, gamma: 0.95, epsilon, rewards };
+        let board: BoardState = new Map();
+        let currentPlayer: Player = 1;
+        let winner: Player | null = null;
+        let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
+        let turns = 0;
+        const gameHistory: { state: number[], action: number, player: Player, turn: number, isThreat: boolean }[] = [];
 
-      const gameHistory: { state: number[], action: number, player: Player, turn: number, isThreat: boolean }[] = [];
-
-      while (!winner && turns < maxTurns && active && isTraining) {
-        const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
-        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
-        
-        // Record moves and detect threats
-        result.moves.forEach((move, i) => {
-          const maxLine = getMaxLine(board, move.q, move.r, currentPlayer);
-          const isThreat = maxLine >= 4;
-          gameHistory.push({ 
-            state: stateBefore, 
-            action: result.actionIndices[i], 
-            player: currentPlayer,
-            turn: turns,
-            isThreat: isThreat
+        // STABILITY SHIELD: Use tf.tidy for each turn
+        while (!winner && turns < maxTurns && active && isTraining) {
+          const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
+          const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
+          
+          result.moves.forEach((move, i) => {
+            const isThreat = getMaxLine(board, move.q, move.r, currentPlayer) >= 4;
+            gameHistory.push({ state: stateBefore, action: result.actionIndices[i], player: currentPlayer, turn: turns, isThreat });
           });
-        });
 
-        board = result.board;
-        winner = result.winner;
-        if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
-        currentPlayer = currentPlayer === 1 ? 2 : 1;
-        turns++;
+          board = result.board;
+          winner = result.winner;
+          if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
+          currentPlayer = currentPlayer === 1 ? 2 : 1;
+          turns++;
 
-        if (turns % 5 === 0) {
-          const l = await trainerRef.current!.trainBatch(batchSize);
-          if (l) setLoss(l);
-        }
-      }
-
-      // Dynamic Reward Distribution with Decay and 50% Cap
-      const playerResults = [1, 2].map(p => {
-        const pExps = gameHistory.filter(exp => exp.player === p);
-        const base = winner 
-          ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0)
-          : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
-        
-        let bonus = 0;
-        pExps.forEach(exp => {
-          bonus += rewards.efficiency;
-          if (exp.isThreat) {
-            // Decay: 1.0 at start, 0.5 at maxTurns
-            const decayFactor = 1.0 - (exp.turn / maxTurns) * 0.5;
-            bonus += rewards.threat * decayFactor;
+          if (turns % 5 === 0) {
+            const l = await trainerRef.current!.trainBatch(batchSize);
+            if (l) setLoss(l);
           }
-        });
-        
-        // 50% Cap Rule
-        const cap = Math.abs(base) * 0.5;
-        const clampedBonus = Math.max(-cap, Math.min(cap, bonus));
-        
-        return { player: p, experiences: pExps, total: base + clampedBonus };
-      });
-
-      // Championship Floor Rule: Winner MUST have most points
-      if (winner) {
-        const winIdx = playerResults.findIndex(r => r.player === winner);
-        const loseIdx = playerResults.findIndex(r => r.player !== winner);
-        if (playerResults[winIdx].total <= playerResults[loseIdx].total) {
-          playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
         }
-      }
 
-      // Add to Memory
-      playerResults.forEach(res => {
-        res.experiences.forEach(exp => {
-          trainerRef.current!.addToMemory(exp.state, exp.action, res.total, null);
+        // Reward logic
+        const playerResults = [1, 2].map(p => {
+          const pExps = gameHistory.filter(exp => exp.player === p);
+          const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
+          let bonus = 0;
+          pExps.forEach(exp => {
+            bonus += rewards.efficiency;
+            if (exp.isThreat) bonus += rewards.threat * (1.0 - (exp.turn / maxTurns) * 0.5);
+          });
+          const cap = Math.abs(base) * 0.5;
+          return { player: p, experiences: pExps, total: base + Math.max(-cap, Math.min(cap, bonus)) };
         });
-      });
 
-      if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
-      setGenerations(g => g + 1);
-      
-      if (active && isTraining) setTimeout(runCycle, 10);
+        // Floor Logic
+        if (winner) {
+          const winIdx = playerResults.findIndex(r => r.player === winner);
+          const loseIdx = playerResults.findIndex(r => r.player !== winner);
+          if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
+        }
+
+        playerResults.forEach(res => {
+          res.experiences.forEach(exp => trainerRef.current!.addToMemory(exp.state, exp.action, res.total, null));
+        });
+
+        // AUTO-SAVE logic
+        const nextGen = generations + 1;
+        setGenerations(nextGen);
+        if (nextGen > 0 && nextGen % autoSaveFreq === 0) {
+          performSave(true);
+        }
+
+        if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
+        
+        // Memory Cleanup
+        tf.disposeVariables(); // Aggressive cleanup for overnight stability
+        
+        if (active && isTraining) setTimeout(runCycle, 10);
+      } catch (err) {
+        addLog(`[Shield] Crash detected! Restarting in 5s...`);
+        console.error(err);
+        if (active && isTraining) setTimeout(runCycle, 5000);
+      }
     };
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, setGenerations, setLoss]);
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq]);
 
   return (
     <div className="tab-content ai-view">
       <div className="settings-header">
         <h2>AI Training Lab</h2>
-        <div className="current-model-info">
-          <span className="model-badge">Active Model: {currentModelName}</span>
-        </div>
+        <div className="current-model-info"><span className="model-badge">Active Model: {currentModelName}</span></div>
       </div>
 
       <section className="ai-top-bar card">
         <div className="top-bar-layout">
           <div className="control-section">
-            <div className="mini-input-row">
-              <label>Max Turns</label>
-              <input type="number" value={maxTurns || 0} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" />
-            </div>
-            <div className="mini-input-row">
-              <label>Batch Size</label>
-              <input type="number" value={batchSize || 0} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} step={32} min="32" max="512" />
-            </div>
-            <div className="mini-input-row">
-              <label>Randomness</label>
-              <input type="number" value={epsilon} onChange={e => setEpsilon(parseSafeFloat(e.target.value))} step={0.05} min="0" max="1" />
+            <div className="mini-input-row"><label>Max Turns</label><input type="number" value={maxTurns || 0} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" /></div>
+            <div className="mini-input-row"><label>Batch Size</label><input type="number" value={batchSize || 0} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} step={32} min="32" max="512" /></div>
+            <div className="mini-input-row"><label>Randomness</label><input type="number" value={epsilon} onChange={e => setEpsilon(parseSafeFloat(e.target.value))} step={0.05} min="0" max="1" /></div>
+            <div className="mini-input-row" title="Automatically saves model every X games">
+              <label>Auto-Save</label>
+              <input type="number" value={autoSaveFreq} onChange={e => setAutoSaveFreq(Math.max(1, parseInt(e.target.value)))} min="1" max="1000" />
             </div>
             <div className="action-buttons">
-              <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>
-                {isTraining ? 'Stop Training' : 'Start Training'}
-              </button>
-              <button className="reset-btn" onClick={handleSave}>Save to Vault</button>
-              <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship}>
-                {isChampionship ? 'Match...' : 'Championship'}
-              </button>
+              <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>{isTraining ? 'Stop Training' : 'Start Training'}</button>
+              <button className="reset-btn" onClick={() => performSave(false)}>Save to Vault</button>
+              <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship}>{isChampionship ? 'Match...' : 'Championship'}</button>
             </div>
           </div>
-
           <div className="stats-section">
             <div className="stat-pill"><span>Gen</span> <strong>{generations}</strong></div>
             <div className="stat-pill"><span>Loss</span> <strong>{loss.toFixed(4)}</strong></div>
-            {champResults && (
-              <div className="champ-pill">
-                <span>Champ</span> <strong>{champResults.p1} - {champResults.p2}</strong>
-              </div>
-            )}
+            {champResults && <div className="champ-pill"><span>Champ</span> <strong>{champResults.p1} - {champResults.p2}</strong></div>}
           </div>
         </div>
       </section>
@@ -381,39 +350,19 @@ export const AITraining: React.FC<Props> = ({
             <button className="add-layer-btn" style={{marginTop: 'auto'}} onClick={handleCreateNew}>Initialize New Model</button>
           </section>
         </div>
-
         <div className="ai-side-col">
           <section className="reward-config card full-height-card">
             <h3>Reward System</h3>
             <p className="section-desc">Adjust incentives.</p>
             <div className="reward-grid">
-              <div className="input-group">
-                <label>Win P1 / P2</label>
-                <div className="dual-input">
-                  <input type="number" value={rewards.p1Win || 0} step={0.1} onChange={e => setRewards({...rewards, p1Win: parseSafeFloat(e.target.value)})} />
-                  <input type="number" value={rewards.p2Win || 0} step={0.1} onChange={e => setRewards({...rewards, p2Win: parseSafeFloat(e.target.value)})} />
-                </div>
-              </div>
-              <div className="input-group">
-                <label>Draw P1 / P2</label>
-                <div className="dual-input">
-                  <input type="number" value={rewards.p1Draw || 0} step={0.1} onChange={e => setRewards({...rewards, p1Draw: parseSafeFloat(e.target.value)})} />
-                  <input type="number" value={rewards.p2Draw || 0} step={0.1} onChange={e => setRewards({...rewards, p2Draw: parseSafeFloat(e.target.value)})} />
-                </div>
-              </div>
-              <div className="input-group">
-                <label>Threat Detection</label>
-                <input type="number" value={rewards.threat || 0} step={0.01} onChange={e => setRewards({...rewards, threat: parseSafeFloat(e.target.value)})} />
-              </div>
-              <div className="input-group">
-                <label>Efficiency</label>
-                <input type="number" value={rewards.efficiency || 0} step={0.001} onChange={e => setRewards({...rewards, efficiency: parseSafeFloat(e.target.value)})} />
-              </div>
+              <div className="input-group"><label>Win P1 / P2</label><div className="dual-input"><input type="number" value={rewards.p1Win || 0} step={0.1} onChange={e => setRewards({...rewards, p1Win: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.p2Win || 0} step={0.1} onChange={e => setRewards({...rewards, p2Win: parseSafeFloat(e.target.value)})} /></div></div>
+              <div className="input-group"><label>Draw P1 / P2</label><div className="dual-input"><input type="number" value={rewards.p1Draw || 0} step={0.1} onChange={e => setRewards({...rewards, p1Draw: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.p2Draw || 0} step={0.1} onChange={e => setRewards({...rewards, p2Draw: parseSafeFloat(e.target.value)})} /></div></div>
+              <div className="input-group"><label>Threat Detection</label><input type="number" value={rewards.threat || 0} step={0.01} onChange={e => setRewards({...rewards, threat: parseSafeFloat(e.target.value)})} /></div>
+              <div className="input-group"><label>Efficiency</label><input type="number" value={rewards.efficiency || 0} step={0.001} onChange={e => setRewards({...rewards, efficiency: parseSafeFloat(e.target.value)})} /></div>
             </div>
           </section>
         </div>
       </div>
-
       <section className="training-log card" style={{marginTop: '20px'}}>
         <h3>System Logs</h3>
         <div className="log-window" style={{height: '200px'}}>
