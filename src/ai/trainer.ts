@@ -23,7 +23,7 @@ export class Trainer {
   private model: tf.LayersModel;
   private memory: { state: number[]; action: number; reward: number; nextState: number[] | null }[] = [];
   private maxMemory = 2000;
-  private isFitting = false; // The Mutex Lock
+  private isFitting = false; 
 
   constructor(model: tf.LayersModel) {
     this.model = model;
@@ -161,6 +161,17 @@ export class Trainer {
     } finally {
       states.dispose();
       targets.dispose();
+      this.isFitting = false;
+    }
+  }
+
+  // New thread-safe save method
+  async saveModel(url: string) {
+    if (this.isFitting) throw new Error("GPU_BUSY");
+    this.isFitting = true;
+    try {
+      await this.model.save(url);
+    } finally {
       this.isFitting = false;
     }
   }

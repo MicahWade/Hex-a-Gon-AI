@@ -49,10 +49,14 @@ export const AITraining: React.FC<Props> = ({
 
   const trainerRef = useRef<Trainer | null>(null);
   const modelRef = useRef<tf.LayersModel | null>(null);
+  const genRef = useRef(generations);
 
   useEffect(() => {
     setVault(getVaultMetadata());
   }, []);
+
+  // Keep genRef in sync with prop for training loop
+  useEffect(() => { genRef.current = generations; }, [generations]);
 
   const addLog = (msg: string) => {
     setLog(prev => [msg, ...prev].slice(0, 50));
@@ -110,38 +114,43 @@ export const AITraining: React.FC<Props> = ({
   };
 
   const performSave = async (isAuto = false) => {
-    if (!modelRef.current) return;
+    if (!trainerRef.current || !modelRef.current) return;
     
-    // Safety: Wait if model is currently training
-    if (trainerRef.current?.isBusy()) {
-      addLog("[System] Waiting for GPU to finish before saving...");
-      setTimeout(() => performSave(isAuto), 1000);
-      return;
-    }
-
-    const name = isAuto ? currentModelName : (prompt("Enter model name:", currentModelName) || currentModelName);
-    const { inputNodes, outputNodes } = getIOConfig();
-
-    const meta: ModelMetadata = {
-      name,
-      timestamp: Date.now(),
-      inputNodes,
-      outputNodes,
-      hiddenLayers: layers,
-      focalRadii: { ...focalRadii },
-      generation: generations,
-      maxTurns,
-      batchSize,
-      epsilon
-    };
-
     try {
-      await saveModelToVault(modelRef.current, meta);
+      const name = isAuto ? currentModelName : (prompt("Enter model name:", currentModelName) || currentModelName);
+      const { inputNodes, outputNodes } = getIOConfig();
+
+      const meta: ModelMetadata = {
+        name,
+        timestamp: Date.now(),
+        inputNodes,
+        outputNodes,
+        hiddenLayers: layers,
+        focalRadii: { ...focalRadii },
+        generation: genRef.current,
+        maxTurns,
+        batchSize,
+        epsilon
+      };
+
+      // USE THREAD-SAFE SAVE
+      await trainerRef.current.saveModel(`indexeddb://${name}`);
+      // Save metadata separately
+      const vaultData = getVaultMetadata();
+      const index = vaultData.findIndex(m => m.name === name);
+      if (index !== -1) vaultData[index] = meta; else vaultData.push(meta);
+      localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
+
       if (!isAuto) setCurrentModelName(name);
       setVault(getVaultMetadata());
-      addLog(`[System] Saved '${name}'.`);
-    } catch (e) {
-      addLog("[Error] Save failed. GPU might be busy.");
+      addLog(`[System] Model saved ${isAuto ? '(Auto)' : ''}.`);
+    } catch (e: any) {
+      if (e.message === "GPU_BUSY") {
+        if (!isAuto) addLog("[System] GPU busy, retrying save...");
+        setTimeout(() => performSave(isAuto), 2000);
+      } else {
+        addLog("[Error] Save failed.");
+      }
     }
   };
 
@@ -184,7 +193,6 @@ export const AITraining: React.FC<Props> = ({
     try {
       const opponentModel = await loadModelFromVault(opponentName);
       const opponentMeta = vault.find(m => m.name === opponentName);
-      
       if (opponentMeta && (
         opponentMeta.focalRadii.global !== focalRadii.global ||
         opponentMeta.focalRadii.self !== focalRadii.self ||
@@ -216,15 +224,13 @@ export const AITraining: React.FC<Props> = ({
           currentPlayer = currentPlayer === 1 ? 2 : 1;
           turns++;
         }
-
         if (winner) {
-          if ((winner === 1 && modelIsP1) || (winner === 2 && !modelIsP1)) p1Wins++;
-          else p2Wins++;
+          if ((winner === 1 && modelIsP1) || (winner === 2 && !modelIsP1)) p1Wins++; else p2Wins++;
         }
         setChampResults({ p1: p1Wins, p2: p2Wins });
       }
     } catch (e) {
-      addLog("[Error] Champ failed.");
+      addLog("[Error] Champ match failed.");
     }
     setIsChampionship(false);
   };
@@ -281,29 +287,24 @@ export const AITraining: React.FC<Props> = ({
           res.experiences.forEach(exp => trainerRef.current!.addToMemory(exp.state, exp.action, res.total, null));
         });
 
-        // LOCK AWARE TRAINING
-        const l = await trainerRef.current!.trainBatch(batchSize);
+        const l = await trainerRef.current!.trainBatch(config.batchSize);
         if (l) setLoss(l);
 
-        const nextGen = generations + 1;
-        setGenerations(nextGen);
-        if (nextGen > 0 && nextGen % autoSaveFreq === 0) performSave(true);
+        const currentGen = genRef.current + 1;
+        setGenerations(currentGen);
+        if (currentGen > 0 && currentGen % autoSaveFreq === 0) performSave(true);
 
         if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
         
-        // RE-RUN ONLY AFTER COMPLETE
-        if (active && isTraining) {
-          setTimeout(runCycle, 100);
-        }
+        if (active && isTraining) setTimeout(runCycle, 100);
       } catch (err) {
-        addLog(`[Shield] Recovering...`);
-        console.error(err);
+        addLog(`[Stability] Error detected. Pausing for 3s...`);
         if (active && isTraining) setTimeout(runCycle, 3000);
       }
     };
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, generations]);
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq]);
 
   return (
     <div className="tab-content ai-view">
