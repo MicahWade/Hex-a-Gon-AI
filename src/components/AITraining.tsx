@@ -7,6 +7,7 @@ import type { BoardState, Coord, Player } from '../types';
 import { getVaultMetadata, saveModelToVault, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
 import { encodeState } from '../ai/encoder';
+import { getMaxLine } from '../gameLogic';
 
 interface Props {
   isTraining: boolean;
@@ -226,7 +227,7 @@ export const AITraining: React.FC<Props> = ({
 
     const runCycle = async () => {
       const config: TrainingConfig = { 
-        learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: epsilon, rewards 
+        learningRate: 0.001, batchSize, gamma: 0.95, epsilon: epsilon, rewards 
       };
       let board: BoardState = new Map();
       let currentPlayer: Player = 1;
@@ -234,14 +235,23 @@ export const AITraining: React.FC<Props> = ({
       let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
       let turns = 0;
 
-      const gameHistory: { state: number[], action: number, player: Player }[] = [];
+      const gameHistory: { state: number[], action: number, player: Player, turn: number, isThreat: boolean }[] = [];
 
       while (!winner && turns < maxTurns && active && isTraining) {
         const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
         const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
         
-        result.actionIndices.forEach(actionIdx => {
-          gameHistory.push({ state: stateBefore, action: actionIdx, player: currentPlayer });
+        // Record moves and detect threats
+        result.moves.forEach((move, i) => {
+          const maxLine = getMaxLine(board, move.q, move.r, currentPlayer);
+          const isThreat = maxLine >= 4;
+          gameHistory.push({ 
+            state: stateBefore, 
+            action: result.actionIndices[i], 
+            player: currentPlayer,
+            turn: turns,
+            isThreat: isThreat
+          });
         });
 
         board = result.board;
@@ -256,21 +266,24 @@ export const AITraining: React.FC<Props> = ({
         }
       }
 
-      // Advanced Reward Distribution Logic
-      let totalP1Reward = 0;
-      let totalP2Reward = 0;
-
+      // Dynamic Reward Distribution with Decay and 50% Cap
       const playerResults = [1, 2].map(p => {
         const pExps = gameHistory.filter(exp => exp.player === p);
         const base = winner 
           ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0)
           : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
         
-        // Calculate cumulative move bonuses (threats/efficiency)
-        // For now we use a simplified mock for threat detection within the loop
-        let bonus = pExps.length * rewards.efficiency; 
+        let bonus = 0;
+        pExps.forEach(exp => {
+          bonus += rewards.efficiency;
+          if (exp.isThreat) {
+            // Decay: 1.0 at start, 0.5 at maxTurns
+            const decayFactor = 1.0 - (exp.turn / maxTurns) * 0.5;
+            bonus += rewards.threat * decayFactor;
+          }
+        });
         
-        // Apply 50% Cap Rule
+        // 50% Cap Rule
         const cap = Math.abs(base) * 0.5;
         const clampedBonus = Math.max(-cap, Math.min(cap, bonus));
         
@@ -357,10 +370,7 @@ export const AITraining: React.FC<Props> = ({
               {vault.length === 0 && <p className="no-moves">No saved models.</p>}
               {vault.map(m => (
                 <div key={m.name} className="vault-item">
-                  <div className="vault-info">
-                    <strong>{m.name}</strong>
-                    <span>{new Date(m.timestamp).toLocaleDateString()} • Gen {m.generation}</span>
-                  </div>
+                  <div className="vault-info"><strong>{m.name}</strong><span>{new Date(m.timestamp).toLocaleDateString()} • Gen {m.generation}</span></div>
                   <div className="vault-actions">
                     <button onClick={() => handleLoad(m.name)}>Load</button>
                     <button className="delete-btn" onClick={() => handleDelete(m.name)}>&times;</button>

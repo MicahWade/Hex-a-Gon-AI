@@ -115,3 +115,29 @@ export function checkWin(board: BoardState, q: number, r: number, player: Player
 
   return false;
 }
+
+// Returns the length of the longest line formed by a move at (q, r)
+export function getMaxLine(board: BoardState, q: number, r: number, player: Player): number {
+  const searchDirs = [
+    { q: 1, r: 0 },
+    { q: 0, r: 1 },
+    { q: 1, r: -1 }
+  ];
+
+  let max = 0;
+  for (const dir of searchDirs) {
+    let count = 1;
+    // forward
+    for (let i = 1; i < 6; i++) {
+      if (board.get(coordToString({ q: q + dir.q * i, r: r + dir.r * i })) === player) count++;
+      else break;
+    }
+    // backward
+    for (let i = 1; i < 6; i++) {
+      if (board.get(coordToString({ q: q - dir.q * i, r: r - dir.r * i })) === player) count++;
+      else break;
+    }
+    if (count > max) max = count;
+  }
+  return max;
+}
