@@ -37,6 +37,7 @@ export const AITraining: React.FC<Props> = ({
   const [batchSize, setBatchSize] = useState(64);
   const [epsilon, setEpsilon] = useState(0.2);
   const [autoSaveFreq, setAutoSaveFreq] = useState(10);
+  const [ioInfo, setIoInfo] = useState({ in: 0, out: 0 });
 
   const [rewards, setRewards] = useState({
     p1Win: 2.0,
@@ -52,7 +53,13 @@ export const AITraining: React.FC<Props> = ({
 
   useEffect(() => {
     setVault(getVaultMetadata());
-  }, []);
+    updateIoDisplay();
+  }, [focalRadii]);
+
+  const updateIoDisplay = () => {
+    const { inputNodes, outputNodes } = getIOConfig();
+    setIoInfo({ in: inputNodes, out: outputNodes });
+  };
 
   const addLog = (msg: string) => {
     setLog(prev => [msg, ...prev].slice(0, 50));
@@ -73,6 +80,7 @@ export const AITraining: React.FC<Props> = ({
     }
     modelRef.current = model;
     trainerRef.current = new Trainer(model);
+    updateIoDisplay();
   };
 
   const getIOConfig = () => {
@@ -231,9 +239,7 @@ export const AITraining: React.FC<Props> = ({
         let turns = 0;
         const gameHistory: { state: number[], action: number, player: Player, turn: number, isThreat: boolean }[] = [];
 
-        // play one full game
         while (!winner && turns < maxTurns && active && isTraining) {
-          // Wrapped in tidy to purge tensors created during prediction
           const result = await tf.tidy(() => {
             const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
             return {
@@ -257,7 +263,6 @@ export const AITraining: React.FC<Props> = ({
           turns++;
         }
 
-        // Distribute rewards
         const playerResults = [1, 2].map(p => {
           const pExps = gameHistory.filter(exp => exp.player === p);
           const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
@@ -280,7 +285,6 @@ export const AITraining: React.FC<Props> = ({
           res.experiences.forEach(exp => trainerRef.current!.addToMemory(exp.state, exp.action, res.total, null));
         });
 
-        // Train ONCE per game to maintain stability
         const l = await trainerRef.current!.trainBatch(batchSize);
         if (l) setLoss(l);
 
@@ -289,15 +293,10 @@ export const AITraining: React.FC<Props> = ({
         if (nextGen > 0 && nextGen % autoSaveFreq === 0) performSave(true);
 
         if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
-        
-        // Final explicit cleanup for Firefox stability
         tf.engine().startScope();
         tf.engine().endScope(); 
         
-        if (active && isTraining) {
-          // Longer delay (150ms) to allow GC to reclaim RAM
-          setTimeout(runCycle, 150);
-        }
+        if (active && isTraining) setTimeout(runCycle, 150);
       } catch (err) {
         addLog(`[Memory Shield] Purging tensors and restarting...`);
         tf.engine().disposeVariables();
@@ -312,7 +311,6 @@ export const AITraining: React.FC<Props> = ({
     <div className="tab-content ai-view">
       <div className="settings-header">
         <h2>AI Training Lab</h2>
-        <div className="current-model-info"><span className="model-badge">Active Model: {currentModelName}</span></div>
       </div>
 
       <section className="ai-top-bar card">
@@ -321,20 +319,19 @@ export const AITraining: React.FC<Props> = ({
             <div className="mini-input-row"><label>Max Turns</label><input type="number" value={maxTurns || 0} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" /></div>
             <div className="mini-input-row"><label>Batch Size</label><input type="number" value={batchSize || 0} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} step={32} min="32" max="512" /></div>
             <div className="mini-input-row"><label>Randomness</label><input type="number" value={epsilon} onChange={e => setEpsilon(parseSafeFloat(e.target.value))} step={0.05} min="0" max="1" /></div>
-            <div className="mini-input-row" title="Automatically saves model every X games">
-              <label>Auto-Save</label>
-              <input type="number" value={autoSaveFreq} onChange={e => setAutoSaveFreq(Math.max(1, parseInt(e.target.value)))} min="1" max="1000" />
-            </div>
+            <div className="mini-input-row"><label>Auto-Save</label><input type="number" value={autoSaveFreq} onChange={e => setAutoSaveFreq(Math.max(1, parseInt(e.target.value)))} min="1" max="1000" /></div>
             <div className="action-buttons">
-              <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>{isTraining ? 'Stop Training' : 'Start Training'}</button>
-              <button className="reset-btn" onClick={() => performSave(false)}>Save to Vault</button>
-              <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship}>{isChampionship ? 'Match...' : 'Championship'}</button>
+              <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>{isTraining ? 'Stop' : 'Start Training'}</button>
+              <button className="reset-btn" onClick={() => performSave(false)}>Save</button>
+              <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship}>Champ</button>
             </div>
           </div>
           <div className="stats-section">
+            <div className="stat-pill model-name-pill"><span>Model</span> <strong>{currentModelName}</strong></div>
+            <div className="stat-pill arch-pill"><span>IO</span> <strong>{ioInfo.in}/{ioInfo.out}</strong></div>
             <div className="stat-pill"><span>Gen</span> <strong>{generations}</strong></div>
             <div className="stat-pill"><span>Loss</span> <strong>{loss.toFixed(4)}</strong></div>
-            {champResults && <div className="champ-pill"><span>Champ</span> <strong>{champResults.p1} - {champResults.p2}</strong></div>}
+            {champResults && <div className="champ-pill"><span>Score</span> <strong>{champResults.p1}-{champResults.p2}</strong></div>}
           </div>
         </div>
       </section>
