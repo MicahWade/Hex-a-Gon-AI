@@ -232,16 +232,9 @@ export const AITraining: React.FC<Props> = ({
         const gameHistory: { state: number[], action: number, player: Player, turn: number, isThreat: boolean }[] = [];
 
         while (!winner && turns < maxTurns && active && isTraining) {
-          const result = await tf.tidy(() => {
-            const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
-            return {
-              stateBefore,
-              playResult: trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns)
-            };
-          });
-
-          const { stateBefore, playResult } = result;
-          const actualResult = await playResult;
+          const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
+          // Removed tf.tidy from around the async call
+          const actualResult = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
           
           actualResult.moves.forEach((move, i) => {
             const isThreat = getMaxLine(board, move.q, move.r, currentPlayer) >= 4;
@@ -255,6 +248,7 @@ export const AITraining: React.FC<Props> = ({
           turns++;
         }
 
+        // Distribute rewards
         const playerResults = [1, 2].map(p => {
           const pExps = gameHistory.filter(exp => exp.player === p);
           const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
@@ -285,14 +279,12 @@ export const AITraining: React.FC<Props> = ({
         if (nextGen > 0 && nextGen % autoSaveFreq === 0) performSave(true);
 
         if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
-        tf.engine().startScope();
-        tf.engine().endScope(); 
         
         if (active && isTraining) setTimeout(runCycle, 150);
       } catch (err) {
-        addLog(`[Memory Shield] Purging tensors and restarting...`);
-        tf.engine().disposeVariables();
-        if (active && isTraining) setTimeout(runCycle, 2000);
+        addLog(`[Stability] Error detected. Pausing for 3s...`);
+        console.error(err);
+        if (active && isTraining) setTimeout(runCycle, 3000);
       }
     };
     runCycle();
@@ -306,7 +298,6 @@ export const AITraining: React.FC<Props> = ({
       </div>
 
       <section className="ai-top-bar card">
-        {/* ROW 1: INPUTS */}
         <div className="top-bar-row">
           <div className="input-group-horizontal">
             <div className="mini-input-row"><label>Max Turns</label><input type="number" value={maxTurns || 0} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" /></div>
@@ -316,7 +307,6 @@ export const AITraining: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* ROW 2: ACTIONS & STATS */}
         <div className="top-bar-row" style={{marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px'}}>
           <div className="action-buttons">
             <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>{isTraining ? 'Stop' : 'Start Training'}</button>
