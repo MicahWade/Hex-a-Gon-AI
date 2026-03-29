@@ -1020,6 +1020,19 @@ button:hover {
   min-width: 0;
 }
 
+.top-bar-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.input-group-horizontal {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
 .reward-grid {
   display: flex;
   flex-direction: column;

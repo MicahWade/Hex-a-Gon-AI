@@ -37,7 +37,6 @@ export const AITraining: React.FC<Props> = ({
   const [batchSize, setBatchSize] = useState(64);
   const [epsilon, setEpsilon] = useState(0.2);
   const [autoSaveFreq, setAutoSaveFreq] = useState(10);
-  const [ioInfo, setIoInfo] = useState({ in: 0, out: 0 });
 
   const [rewards, setRewards] = useState({
     p1Win: 2.0,
@@ -53,13 +52,7 @@ export const AITraining: React.FC<Props> = ({
 
   useEffect(() => {
     setVault(getVaultMetadata());
-    updateIoDisplay();
-  }, [focalRadii]);
-
-  const updateIoDisplay = () => {
-    const { inputNodes, outputNodes } = getIOConfig();
-    setIoInfo({ in: inputNodes, out: outputNodes });
-  };
+  }, []);
 
   const addLog = (msg: string) => {
     setLog(prev => [msg, ...prev].slice(0, 50));
@@ -80,7 +73,6 @@ export const AITraining: React.FC<Props> = ({
     }
     modelRef.current = model;
     trainerRef.current = new Trainer(model);
-    updateIoDisplay();
   };
 
   const getIOConfig = () => {
@@ -314,21 +306,25 @@ export const AITraining: React.FC<Props> = ({
       </div>
 
       <section className="ai-top-bar card">
-        <div className="top-bar-layout">
-          <div className="control-section">
+        {/* ROW 1: INPUTS */}
+        <div className="top-bar-row">
+          <div className="input-group-horizontal">
             <div className="mini-input-row"><label>Max Turns</label><input type="number" value={maxTurns || 0} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" /></div>
             <div className="mini-input-row"><label>Batch Size</label><input type="number" value={batchSize || 0} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} step={32} min="32" max="512" /></div>
             <div className="mini-input-row"><label>Randomness</label><input type="number" value={epsilon} onChange={e => setEpsilon(parseSafeFloat(e.target.value))} step={0.05} min="0" max="1" /></div>
             <div className="mini-input-row"><label>Auto-Save</label><input type="number" value={autoSaveFreq} onChange={e => setAutoSaveFreq(Math.max(1, parseInt(e.target.value)))} min="1" max="1000" /></div>
-            <div className="action-buttons">
-              <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>{isTraining ? 'Stop' : 'Start Training'}</button>
-              <button className="reset-btn" onClick={() => performSave(false)}>Save</button>
-              <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship}>Champ</button>
-            </div>
+          </div>
+        </div>
+
+        {/* ROW 2: ACTIONS & STATS */}
+        <div className="top-bar-row" style={{marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px'}}>
+          <div className="action-buttons">
+            <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>{isTraining ? 'Stop' : 'Start Training'}</button>
+            <button className="reset-btn" onClick={() => performSave(false)}>Save</button>
+            <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship}>Champ</button>
           </div>
           <div className="stats-section">
             <div className="stat-pill model-name-pill"><span>Model</span> <strong>{currentModelName}</strong></div>
-            <div className="stat-pill arch-pill"><span>IO</span> <strong>{ioInfo.in}/{ioInfo.out}</strong></div>
             <div className="stat-pill"><span>Gen</span> <strong>{generations}</strong></div>
             <div className="stat-pill"><span>Loss</span> <strong>{loss.toFixed(4)}</strong></div>
             {champResults && <div className="champ-pill"><span>Score</span> <strong>{champResults.p1}-{champResults.p2}</strong></div>}
