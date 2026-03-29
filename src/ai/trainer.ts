@@ -7,8 +7,8 @@ import { encodeState, decodeMove } from './encoder';
 export interface TrainingConfig {
   learningRate: number;
   batchSize: number;
-  gamma: number; // Discount factor
-  epsilon: number; // Exploration rate
+  gamma: number; 
+  epsilon: number; 
   rewards: {
     p1Win: number;
     p2Win: number;
@@ -19,21 +19,16 @@ export interface TrainingConfig {
   };
 }
 
-/**
- * Handles the background self-play and model optimization.
- */
 export class Trainer {
   private model: tf.LayersModel;
   private memory: { state: number[]; action: number; reward: number; nextState: number[] | null }[] = [];
-  private maxMemory = 2000; // Reduced for Firefox/Zen stability
+  private maxMemory = 2000;
+  private isFitting = false; // The Mutex Lock
 
   constructor(model: tf.LayersModel) {
     this.model = model;
   }
 
-  /**
-   * Performs one turn of play (2 moves) using a specific model.
-   */
   async playTurn(
     board: BoardState,
     player: Player,
@@ -50,7 +45,6 @@ export class Trainer {
     let winner: Player | null = null;
     const modelToUse = specificModel || this.model;
 
-    // AI makes sequential moves
     const isFirstMove = board.size === 0;
     const moveCount = isFirstMove ? 1 : 2;
     
@@ -66,11 +60,9 @@ export class Trainer {
         const prediction = await this.predictAction(state, config.epsilon, modelToUse);
         
         if (typeof prediction === 'number') {
-          // Random epsilon move
           action = prediction;
           move = decodeMove(action, foci, radii);
         } else {
-          // Search for first valid move in sorted list
           let foundValid = false;
           for (const option of prediction) {
             const candidate = decodeMove(option.idx, foci, radii);
@@ -114,7 +106,6 @@ export class Trainer {
     }
 
     return tf.tidy(() => {
-      // Adapt state to model input size (supports backward compatibility)
       let adaptedState = state;
       if (state.length > inputSize) {
         adaptedState = state.slice(0, inputSize);
@@ -133,40 +124,30 @@ export class Trainer {
     });
   }
 
-  /**
-   * Trains the model on a random batch of experiences from memory.
-   */
   async trainBatch(batchSize: number) {
-    if (this.memory.length < batchSize) return null;
+    if (this.memory.length < batchSize || this.isFitting) return null;
 
     const inputSize = this.model.inputs[0].shape[1] as number;
     const outputSize = this.model.outputs[0].shape[1] as number;
 
-    // Filter memory to ensure only states matching current model input size are used
     const validMemory = this.memory.filter(m => m.state.length === inputSize);
     if (validMemory.length < batchSize) return null;
 
-    const batch = validMemory.sort(() => 0.5 - Math.random()).slice(0, batchSize);
+    this.isFitting = true;
     
-    // Create flat Float32Arrays to avoid JS nested array overhead and RangeErrors
+    const batch = validMemory.sort(() => 0.5 - Math.random()).slice(0, batchSize);
     const statesData = new Float32Array(batchSize * inputSize);
     for (let i = 0; i < batchSize; i++) {
       statesData.set(batch[i].state, i * inputSize);
     }
 
     const states = tf.tensor2d(statesData, [batchSize, inputSize]);
-    
     const targets = tf.tidy(() => {
       const currentPredictions = this.model.predict(states) as tf.Tensor;
-      // We must use arraySync here to modify, but we do it on the whole batch at once
       const targetData = currentPredictions.arraySync() as number[][];
-
       batch.forEach((m, i) => {
-        if (m.action < outputSize) {
-          targetData[i][m.action] = m.reward;
-        }
+        if (m.action < outputSize) targetData[i][m.action] = m.reward;
       });
-
       return tf.tensor2d(targetData);
     });
 
@@ -180,6 +161,7 @@ export class Trainer {
     } finally {
       states.dispose();
       targets.dispose();
+      this.isFitting = false;
     }
   }
 
@@ -190,8 +172,11 @@ export class Trainer {
   addToMemory(state: number[], action: number, reward: number, nextState: number[] | null) {
     const expectedSize = (this.model.inputs[0].shape[1] as number);
     if (state.length !== expectedSize) return;
-    
     this.memory.push({ state, action, reward, nextState });
     if (this.memory.length > this.maxMemory) this.memory.shift();
+  }
+
+  public isBusy(): boolean {
+    return this.isFitting;
   }
 }

@@ -111,6 +111,14 @@ export const AITraining: React.FC<Props> = ({
 
   const performSave = async (isAuto = false) => {
     if (!modelRef.current) return;
+    
+    // Safety: Wait if model is currently training
+    if (trainerRef.current?.isBusy()) {
+      addLog("[System] Waiting for GPU to finish before saving...");
+      setTimeout(() => performSave(isAuto), 1000);
+      return;
+    }
+
     const name = isAuto ? currentModelName : (prompt("Enter model name:", currentModelName) || currentModelName);
     const { inputNodes, outputNodes } = getIOConfig();
 
@@ -127,10 +135,14 @@ export const AITraining: React.FC<Props> = ({
       epsilon
     };
 
-    await saveModelToVault(modelRef.current, meta);
-    if (!isAuto) setCurrentModelName(name);
-    setVault(getVaultMetadata());
-    addLog(`[System] Model '${name}' saved ${isAuto ? '(Auto)' : ''}.`);
+    try {
+      await saveModelToVault(modelRef.current, meta);
+      if (!isAuto) setCurrentModelName(name);
+      setVault(getVaultMetadata());
+      addLog(`[System] Saved '${name}'.`);
+    } catch (e) {
+      addLog("[Error] Save failed. GPU might be busy.");
+    }
   };
 
   const handleLoad = async (name: string) => {
@@ -233,7 +245,6 @@ export const AITraining: React.FC<Props> = ({
 
         while (!winner && turns < maxTurns && active && isTraining) {
           const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
-          // Removed tf.tidy from around the async call
           const actualResult = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
           
           actualResult.moves.forEach((move, i) => {
@@ -248,7 +259,6 @@ export const AITraining: React.FC<Props> = ({
           turns++;
         }
 
-        // Distribute rewards
         const playerResults = [1, 2].map(p => {
           const pExps = gameHistory.filter(exp => exp.player === p);
           const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
@@ -271,6 +281,7 @@ export const AITraining: React.FC<Props> = ({
           res.experiences.forEach(exp => trainerRef.current!.addToMemory(exp.state, exp.action, res.total, null));
         });
 
+        // LOCK AWARE TRAINING
         const l = await trainerRef.current!.trainBatch(batchSize);
         if (l) setLoss(l);
 
@@ -280,16 +291,19 @@ export const AITraining: React.FC<Props> = ({
 
         if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
         
-        if (active && isTraining) setTimeout(runCycle, 150);
+        // RE-RUN ONLY AFTER COMPLETE
+        if (active && isTraining) {
+          setTimeout(runCycle, 100);
+        }
       } catch (err) {
-        addLog(`[Stability] Error detected. Pausing for 3s...`);
+        addLog(`[Shield] Recovering...`);
         console.error(err);
         if (active && isTraining) setTimeout(runCycle, 3000);
       }
     };
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, generations, setGenerations, setLoss]);
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, generations]);
 
   return (
     <div className="tab-content ai-view">
