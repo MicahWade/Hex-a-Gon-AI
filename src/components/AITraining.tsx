@@ -36,7 +36,7 @@ export const AITraining: React.FC<Props> = ({
   const [maxTurns, setMaxTurns] = useState(100);
   const [batchSize, setBatchSize] = useState(64);
   const [epsilon, setEpsilon] = useState(0.2);
-  const [autoSaveFreq, setAutoSaveFreq] = useState(10); // Auto-save every 10 gens
+  const [autoSaveFreq, setAutoSaveFreq] = useState(10);
 
   const [rewards, setRewards] = useState({
     p1Win: 2.0,
@@ -231,29 +231,33 @@ export const AITraining: React.FC<Props> = ({
         let turns = 0;
         const gameHistory: { state: number[], action: number, player: Player, turn: number, isThreat: boolean }[] = [];
 
-        // STABILITY SHIELD: Use tf.tidy for each turn
+        // play one full game
         while (!winner && turns < maxTurns && active && isTraining) {
-          const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
-          const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
-          
-          result.moves.forEach((move, i) => {
-            const isThreat = getMaxLine(board, move.q, move.r, currentPlayer) >= 4;
-            gameHistory.push({ state: stateBefore, action: result.actionIndices[i], player: currentPlayer, turn: turns, isThreat });
+          // Wrapped in tidy to purge tensors created during prediction
+          const result = await tf.tidy(() => {
+            const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
+            return {
+              stateBefore,
+              playResult: trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns)
+            };
           });
 
-          board = result.board;
-          winner = result.winner;
-          if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
+          const { stateBefore, playResult } = result;
+          const actualResult = await playResult;
+          
+          actualResult.moves.forEach((move, i) => {
+            const isThreat = getMaxLine(board, move.q, move.r, currentPlayer) >= 4;
+            gameHistory.push({ state: stateBefore, action: actualResult.actionIndices[i], player: currentPlayer, turn: turns, isThreat });
+          });
+
+          board = actualResult.board;
+          winner = actualResult.winner;
+          if (actualResult.moves.length > 0) foci[0] = actualResult.moves[actualResult.moves.length - 1];
           currentPlayer = currentPlayer === 1 ? 2 : 1;
           turns++;
-
-          if (turns % 5 === 0) {
-            const l = await trainerRef.current!.trainBatch(batchSize);
-            if (l) setLoss(l);
-          }
         }
 
-        // Reward logic
+        // Distribute rewards
         const playerResults = [1, 2].map(p => {
           const pExps = gameHistory.filter(exp => exp.player === p);
           const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
@@ -266,7 +270,6 @@ export const AITraining: React.FC<Props> = ({
           return { player: p, experiences: pExps, total: base + Math.max(-cap, Math.min(cap, bonus)) };
         });
 
-        // Floor Logic
         if (winner) {
           const winIdx = playerResults.findIndex(r => r.player === winner);
           const loseIdx = playerResults.findIndex(r => r.player !== winner);
@@ -277,28 +280,33 @@ export const AITraining: React.FC<Props> = ({
           res.experiences.forEach(exp => trainerRef.current!.addToMemory(exp.state, exp.action, res.total, null));
         });
 
-        // AUTO-SAVE logic
+        // Train ONCE per game to maintain stability
+        const l = await trainerRef.current!.trainBatch(batchSize);
+        if (l) setLoss(l);
+
         const nextGen = generations + 1;
         setGenerations(nextGen);
-        if (nextGen > 0 && nextGen % autoSaveFreq === 0) {
-          performSave(true);
-        }
+        if (nextGen > 0 && nextGen % autoSaveFreq === 0) performSave(true);
 
         if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
         
-        // Memory Cleanup
-        tf.disposeVariables(); // Aggressive cleanup for overnight stability
+        // Final explicit cleanup for Firefox stability
+        tf.engine().startScope();
+        tf.engine().endScope(); 
         
-        if (active && isTraining) setTimeout(runCycle, 10);
+        if (active && isTraining) {
+          // Longer delay (150ms) to allow GC to reclaim RAM
+          setTimeout(runCycle, 150);
+        }
       } catch (err) {
-        addLog(`[Shield] Crash detected! Restarting in 5s...`);
-        console.error(err);
-        if (active && isTraining) setTimeout(runCycle, 5000);
+        addLog(`[Memory Shield] Purging tensors and restarting...`);
+        tf.engine().disposeVariables();
+        if (active && isTraining) setTimeout(runCycle, 2000);
       }
     };
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq]);
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, generations, setGenerations, setLoss]);
 
   return (
     <div className="tab-content ai-view">

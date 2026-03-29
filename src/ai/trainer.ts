@@ -25,7 +25,7 @@ export interface TrainingConfig {
 export class Trainer {
   private model: tf.LayersModel;
   private memory: { state: number[]; action: number; reward: number; nextState: number[] | null }[] = [];
-  private maxMemory = 5000;
+  private maxMemory = 2000; // Reduced for Firefox/Zen stability
 
   constructor(model: tf.LayersModel) {
     this.model = model;
