@@ -141,3 +141,26 @@ export function getMaxLine(board: BoardState, q: number, r: number, player: Play
   }
   return max;
 }
+
+export function rotateCoord(coord: Coord, times: number): Coord {
+  let { q, r } = coord;
+  for (let i = 0; i < times % 6; i++) {
+    const newQ = -r;
+    const newR = q + r;
+    q = newQ;
+    r = newR;
+  }
+  return { q, r };
+}
+
+export function rotateBoard(board: BoardState, times: number): BoardState {
+  if (times % 6 === 0) return board;
+  const newBoard = new Map<string, Player>();
+  board.forEach((player, key) => {
+    const [qStr, rStr] = key.split(',');
+    const coord = { q: parseInt(qStr), r: parseInt(rStr) };
+    const rotated = rotateCoord(coord, times);
+    newBoard.set(coordToString(rotated), player);
+  });
+  return newBoard;
+}

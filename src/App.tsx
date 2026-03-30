@@ -8,6 +8,9 @@ import { ModelConfig } from './components/ModelConfig';
 import { Settings } from './components/Settings';
 import { MoveLog } from './components/MoveLog';
 import { Trainer } from './ai/trainer';
+import { encodeState, decodeMove } from './ai/encoder';
+import { checkWin, getMaxLine } from './gameLogic';
+import { coordToString } from './types';
 import type { NotationType, LogPosition, Theme, Player, Coord } from './types';
 import './App.css';
 
@@ -98,12 +101,62 @@ function App() {
         ];
 
         try {
-          const result = await sharedTrainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turn, 100);
-          if (result.moves.length > 0) {
-            makeMove(result.moves[0].q, result.moves[0].r);
-            if (result.moves.length > 1) {
+          // 1-Step Look-Ahead (Shallow MCTS)
+          const topMoves = await sharedTrainerRef.current!.getTopMoves(encodeState(board, currentPlayer, foci, focalRadii, turn, 100), 5);
+
+          let bestMove: Coord | null = null;
+          let bestMoveScore = -Infinity;
+
+          for (const option of topMoves) {
+            const candidate = decodeMove(option.idx, foci, focalRadii);
+            const key = coordToString(candidate);
+            if (board.has(key)) continue;
+
+            // Simulate making this move
+            const simBoard = new Map(board);
+            simBoard.set(key, currentPlayer);
+
+            // Check if it wins immediately
+            if (checkWin(simBoard, candidate.q, candidate.r, currentPlayer)) {
+              bestMove = candidate;
+              break; // Instant win, take it
+            }
+
+            // Simulate opponent's response
+            let score = option.prob; // Base score is the initial probability
+            const otherPlayer = currentPlayer === 1 ? 2 : 1;
+
+            // Look for opponent's immediate threats
+            // A simple check: does opponent have a 5-in-a-row now?
+            // Since we can't easily simulate all opponent moves, we penalize if they had a threat we didn't block
+            // The model's policy should handle this, but explicit lookahead helps.
+            const enemyMax = getMaxLine(board, candidate.q, candidate.r, otherPlayer);
+            if (enemyMax >= 4) {
+              score += 1.0; // High bonus for blocking a major threat
+            }
+
+            if (score > bestMoveScore) {
+              bestMoveScore = score;
+              bestMove = candidate;
+            }
+          }
+
+          if (bestMove) {
+            makeMove(bestMove.q, bestMove.r);
+
+            // For the second move, we just rely on the base model without deep lookahead for speed
+            if (board.size > 0) {
               await new Promise(resolve => setTimeout(resolve, 400));
-              makeMove(result.moves[1].q, result.moves[1].r);
+              const newBoard = new Map(board);
+              newBoard.set(coordToString(bestMove), currentPlayer);
+
+              const newFoci = [...foci];
+              newFoci[0] = bestMove;
+
+              const result2 = await sharedTrainerRef.current!.playTurn(newBoard, currentPlayer, newFoci, focalRadii, config, turn, 100);
+              if (result2.moves.length > 0) {
+                makeMove(result2.moves[0].q, result2.moves[0].r);
+              }
             }
           }
         } catch (err) {
@@ -111,7 +164,8 @@ function App() {
         } finally {
           aiProcessing.current = false;
         }
-      }, 1000);
+        }, 1000);
+
       return () => clearTimeout(timer);
     }
   }, [gameMode, gameStarted, currentPlayer, userPlayer, board, winner, turn, focalRadii, history, makeMove, isTraining]);

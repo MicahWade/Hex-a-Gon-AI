@@ -122,3 +122,44 @@ function indexToCoord(focus: Coord, index: number, radius: number): Coord {
   }
   return focus;
 }
+
+export function coordToIndex(
+  target: Coord,
+  foci: Coord[],
+  radii: { global: number; self: number; memory: number }
+): number {
+  let currentIndex = 0;
+  for (let i = 0; i < foci.length; i++) {
+    const focus = foci[i];
+    let radius = radii.memory;
+    if (i === 0) radius = radii.global;
+    if (i === 1) radius = radii.self;
+
+    if (target.q === focus.q && target.r === focus.r) return currentIndex;
+
+    let count = 1;
+    const steps = [
+      { q: 0, r: -1 }, { q: -1, r: 0 }, { q: -1, r: 1 }, 
+      { q: 0, r: 1 }, { q: 1, r: 0 }, { q: 1, r: -1 }
+    ];
+
+    let tempCount = count;
+    for (let r = 1; r <= radius; r++) {
+      let currQ = focus.q + r;
+      let currR = focus.r;
+      for (let side = 0; side < 6; side++) {
+        for (let step = 0; step < r; step++) {
+          if (currQ === target.q && currR === target.r) {
+            return currentIndex + tempCount;
+          }
+          currQ += steps[side].q;
+          currR += steps[side].r;
+          tempCount++;
+        }
+      }
+    }
+    const hexCount = 3 * radius * (radius + 1) + 1;
+    currentIndex += hexCount;
+  }
+  return -1; // Not found
+}

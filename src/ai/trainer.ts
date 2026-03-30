@@ -14,22 +14,55 @@ export interface TrainingConfig {
     p2Win: number;
     p1Draw: number;
     p2Draw: number;
-    threat: number;
+    line3: number;
+    line4: number;
+    line5: number;
+    block4: number;
+    block5: number;
     efficiency: number;
   };
 }
 
 export class Trainer {
   private model: tf.LayersModel;
-  private memory: { state: number[]; action: number; reward: number; nextState: number[] | null }[] = [];
-  private maxMemory = 2000;
+  private memory: { state: number[]; action: number; reward: number; nextState: number[] | null; priority: number }[] = [];
+  private maxMemory = 2000; // Reduced for Firefox/Zen stability
   private isFitting = false; 
 
   constructor(model: tf.LayersModel) {
     this.model = model;
   }
 
+  setLearningRate(lr: number) {
+    if (this.model.optimizer) {
+      (this.model.optimizer as any).learningRate = lr;
+    }
+  }
+
+  async getTopMoves(state: number[], count: number = 3): Promise<{prob: number, idx: number}[]> {
+    const inputSize = this.model.inputs[0].shape[1] as number;
+    return tf.tidy(() => {
+      let adaptedState = state;
+      if (state.length > inputSize) {
+        adaptedState = state.slice(0, inputSize);
+      } else if (state.length < inputSize) {
+        adaptedState = [...state, ...new Array(inputSize - state.length).fill(0)];
+      }
+
+      const inputData = new Float32Array(adaptedState);
+      const input = tf.tensor2d(inputData, [1, inputSize]);
+      const prediction = this.model.predict(input) as tf.Tensor;
+
+      const probs = prediction.dataSync();
+      return Array.from(probs)
+        .map((prob, idx) => ({ prob, idx }))
+        .sort((a, b) => b.prob - a.prob)
+        .slice(0, count);
+    });
+  }
+
   async playTurn(
+
     board: BoardState,
     player: Player,
     foci: Coord[],
@@ -135,7 +168,20 @@ export class Trainer {
 
     this.isFitting = true;
     
-    const batch = validMemory.sort(() => 0.5 - Math.random()).slice(0, batchSize);
+    // Prioritized sampling
+    const totalPriority = validMemory.reduce((sum, m) => sum + m.priority, 0);
+    const batch: typeof validMemory = [];
+    for (let i = 0; i < batchSize; i++) {
+      let rand = Math.random() * totalPriority;
+      for (const m of validMemory) {
+        rand -= m.priority;
+        if (rand <= 0) {
+          batch.push(m);
+          break;
+        }
+      }
+    }
+
     const statesData = new Float32Array(batchSize * inputSize);
     for (let i = 0; i < batchSize; i++) {
       statesData.set(batch[i].state, i * inputSize);
@@ -180,10 +226,10 @@ export class Trainer {
     this.memory = [];
   }
 
-  addToMemory(state: number[], action: number, reward: number, nextState: number[] | null) {
+  addToMemory(state: number[], action: number, reward: number, nextState: number[] | null, priority: number = 1.0) {
     const expectedSize = (this.model.inputs[0].shape[1] as number);
     if (state.length !== expectedSize) return;
-    this.memory.push({ state, action, reward, nextState });
+    this.memory.push({ state, action, reward, nextState, priority });
     if (this.memory.length > this.maxMemory) this.memory.shift();
   }
 

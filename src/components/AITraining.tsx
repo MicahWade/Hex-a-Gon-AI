@@ -6,8 +6,8 @@ import type { TrainingConfig } from '../ai/trainer';
 import type { BoardState, Coord, Player } from '../types';
 import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
-import { encodeState } from '../ai/encoder';
-import { getMaxLine } from '../gameLogic';
+import { encodeState, coordToIndex } from '../ai/encoder';
+import { getMaxLine, rotateBoard, rotateCoord } from '../gameLogic';
 
 interface Props {
   isTraining: boolean;
@@ -191,28 +191,29 @@ export const AITraining: React.FC<Props> = ({
     let active = true;
     if (!isTraining || !trainerRef.current) return;
 
-    const runSingleGame = async (gameId: number) => {
+    const runSingleGame = async () => {
       const config: TrainingConfig = { learningRate: 0.001, batchSize, gamma: 0.95, epsilon, rewards };
       let board: BoardState = new Map();
       let currentPlayer: Player = 1;
       let winner: Player | null = null;
       let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
       let turns = 0;
-      const gameHistory: { state: number[], action: number, player: Player, turn: number, tacticalBonus: number }[] = [];
+      const gameHistory: { boardBefore: BoardState, foci: Coord[], move: Coord, player: Player, turn: number, tacticalBonus: number }[] = [];
 
       // 20% Chance to play against a Random Bot instead of self
       const isRandomOpponent = Math.random() < 0.2;
       const randomPlayerId = isRandomOpponent ? (Math.random() > 0.5 ? 1 : 2) : 0;
 
       while (!winner && turns < maxTurns && active && isTraining) {
-        const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
+        const boardBefore = new Map(board);
+        const currentFoci = [...foci];
         
         // Use epsilon=1.0 for the random player if it's their turn
         const currentEpsilon = (currentPlayer === randomPlayerId) ? 1.0 : epsilon;
         
         const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: currentEpsilon }, turns, maxTurns);
         
-        result.moves.forEach((move, i) => {
+        result.moves.forEach((move) => {
           let tBonus = 0;
           const myMax = getMaxLine(board, move.q, move.r, currentPlayer);
           const otherPlayer = (currentPlayer === 1 ? 2 : 1) as Player;
@@ -225,8 +226,9 @@ export const AITraining: React.FC<Props> = ({
           if (enemyMaxBefore === 5) tBonus += rewards.block5;
 
           gameHistory.push({ 
-            state: stateBefore, 
-            action: result.actionIndices[i], 
+            boardBefore: boardBefore,
+            foci: currentFoci,
+            move: move,
             player: currentPlayer, 
             turn: turns, 
             tacticalBonus: tBonus 
@@ -240,7 +242,7 @@ export const AITraining: React.FC<Props> = ({
         turns++;
       }
 
-      // Distribute rewards and save to memory
+      // Distribute rewards and save to memory with Data Augmentation
       const playerResults = [1, 2].map(p => {
         const pExps = gameHistory.filter(exp => exp.player === p);
         const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
@@ -257,7 +259,29 @@ export const AITraining: React.FC<Props> = ({
       }
 
       playerResults.forEach(res => {
-        res.experiences.forEach(exp => trainerRef.current?.addToMemory(exp.state, exp.action, res.total, null));
+        res.experiences.forEach(exp => {
+          const priority = Math.abs(res.total) + 0.1; // Higher absolute reward = higher priority
+          
+          // 0-Degree (Original)
+          const action0 = coordToIndex(exp.move, exp.foci, focalRadii);
+          if (action0 !== -1) {
+            const state0 = encodeState(exp.boardBefore, exp.player, exp.foci, focalRadii, exp.turn, maxTurns);
+            trainerRef.current?.addToMemory(state0, action0, res.total, null, priority);
+          }
+
+          // Data Augmentation: 60, 120, 180, 240, 300 Degrees
+          for (let r = 1; r < 6; r++) {
+            const rotBoard = rotateBoard(exp.boardBefore, r);
+            const rotFoci = exp.foci.map(f => rotateCoord(f, r));
+            const rotMove = rotateCoord(exp.move, r);
+            const rotAction = coordToIndex(rotMove, rotFoci, focalRadii);
+            
+            if (rotAction !== -1) {
+              const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
+              trainerRef.current?.addToMemory(rotState, rotAction, res.total, null, priority);
+            }
+          }
+        });
       });
 
       return { winner, turns, isRandomOpponent };
@@ -265,9 +289,14 @@ export const AITraining: React.FC<Props> = ({
 
     const runParallelCycle = async () => {
       try {
+        // Dynamic Learning Rate: Decreases slowly as generations increase
+        const currentLR = Math.max(0.0001, 0.001 * Math.pow(0.99, generations / 100));
+        trainerRef.current!.setLearningRate(currentLR);
+
         // Run 4 games in parallel
-        const games = [1, 2, 3, 4].map(id => runSingleGame(id));
+        const games = [1, 2, 3, 4].map(() => runSingleGame());
         const results = await Promise.all(games);
+
         
         // Train on the new data
         const l = await trainerRef.current!.trainBatch(batchSize);
