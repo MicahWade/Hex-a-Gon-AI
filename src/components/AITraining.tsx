@@ -42,16 +42,8 @@ export const AITraining: React.FC<Props> = ({
   const [autoSaveFreq, setAutoSaveFreq] = useState(10);
   
   const [rewards, setRewards] = useState({
-    p1Win: 4.0,
-    p2Win: 5.0,
-    p1Draw: 0.4,
-    p2Draw: 0.6,
-    line3: 0.05,
-    line4: 0.15,
-    line5: 0.50,
-    block4: 0.20,
-    block5: 0.50,
-    efficiency: -0.005
+    p1Win: 4.0, p2Win: 5.0, p1Draw: 0.4, p2Draw: 0.6,
+    line3: 0.05, line4: 0.15, line5: 0.50, block4: 0.20, block5: 0.50, efficiency: -0.005
   });
 
   const genRef = useRef(generations);
@@ -90,7 +82,7 @@ export const AITraining: React.FC<Props> = ({
     initTrainer(model);
     setGenerations(0);
     setLoss(0);
-    addLog(`[System] New model: ${inputNodes} in -> [${layers.join(',')}] -> ${outputNodes} out`);
+    addLog(`[System] New model initialized.`);
   };
 
   const toggleTraining = async () => {
@@ -139,12 +131,11 @@ export const AITraining: React.FC<Props> = ({
         if (meta.maxTurns !== undefined) setMaxTurns(meta.maxTurns);
         if (meta.batchSize !== undefined) setBatchSize(meta.batchSize);
         if (meta.epsilon !== undefined) setEpsilon(meta.epsilon);
-        addLog(`[System] Synced Architecture, Stats & Settings for '${name}'.`);
       }
       initTrainer(model);
       if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
-      addLog(`[System] Loaded '${name}' (${meta?.inputNodes} in, [${meta?.hiddenLayers.join(',')}] hidden, ${meta?.outputNodes} out)`);
+      addLog(`[System] Model '${name}' loaded.`);
     } catch (e) { addLog(`[Error] Failed to load '${name}'.`); }
   };
 
@@ -200,86 +191,105 @@ export const AITraining: React.FC<Props> = ({
     let active = true;
     if (!isTraining || !trainerRef.current) return;
 
-    const runCycle = async () => {
-      try {
-        const config: TrainingConfig = { learningRate: 0.001, batchSize, gamma: 0.95, epsilon, rewards };
-        let board: BoardState = new Map();
-        let currentPlayer: Player = 1;
-        let winner: Player | null = null;
-        let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
-        let turns = 0;
-        const gameHistory: { state: number[], action: number, player: Player, turn: number, tacticalBonus: number }[] = [];
+    const runSingleGame = async (gameId: number) => {
+      const config: TrainingConfig = { learningRate: 0.001, batchSize, gamma: 0.95, epsilon, rewards };
+      let board: BoardState = new Map();
+      let currentPlayer: Player = 1;
+      let winner: Player | null = null;
+      let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
+      let turns = 0;
+      const gameHistory: { state: number[], action: number, player: Player, turn: number, tacticalBonus: number }[] = [];
 
-        while (!winner && turns < maxTurns && active && isTraining) {
-          const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
-          const actualResult = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
+      // 20% Chance to play against a Random Bot instead of self
+      const isRandomOpponent = Math.random() < 0.2;
+      const randomPlayerId = isRandomOpponent ? (Math.random() > 0.5 ? 1 : 2) : 0;
+
+      while (!winner && turns < maxTurns && active && isTraining) {
+        const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
+        
+        // Use epsilon=1.0 for the random player if it's their turn
+        const currentEpsilon = (currentPlayer === randomPlayerId) ? 1.0 : epsilon;
+        
+        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: currentEpsilon }, turns, maxTurns);
+        
+        result.moves.forEach((move, i) => {
+          let tBonus = 0;
+          const myMax = getMaxLine(board, move.q, move.r, currentPlayer);
+          const otherPlayer = (currentPlayer === 1 ? 2 : 1) as Player;
+          const enemyMaxBefore = getMaxLine(board, move.q, move.r, otherPlayer);
           
-          actualResult.moves.forEach((move, i) => {
-            let tBonus = 0;
-            const myMax = getMaxLine(board, move.q, move.r, currentPlayer);
-            const otherPlayer = (currentPlayer === 1 ? 2 : 1) as Player;
-            const enemyMaxBefore = getMaxLine(board, move.q, move.r, otherPlayer);
-            
-            // Offensive Bonuses
-            if (myMax === 3) tBonus += rewards.line3;
-            if (myMax === 4) tBonus += rewards.line4;
-            if (myMax === 5) tBonus += rewards.line5;
+          if (myMax === 3) tBonus += rewards.line3;
+          if (myMax === 4) tBonus += rewards.line4;
+          if (myMax === 5) tBonus += rewards.line5;
+          if (enemyMaxBefore === 4) tBonus += rewards.block4;
+          if (enemyMaxBefore === 5) tBonus += rewards.block5;
 
-            // Defensive Bonuses (Blocking)
-            if (enemyMaxBefore === 4) tBonus += rewards.block4;
-            if (enemyMaxBefore === 5) tBonus += rewards.block5;
-
-            gameHistory.push({ 
-              state: stateBefore, 
-              action: actualResult.actionIndices[i], 
-              player: currentPlayer, 
-              turn: turns, 
-              tacticalBonus: tBonus 
-            });
+          gameHistory.push({ 
+            state: stateBefore, 
+            action: result.actionIndices[i], 
+            player: currentPlayer, 
+            turn: turns, 
+            tacticalBonus: tBonus 
           });
-
-          board = actualResult.board;
-          winner = actualResult.winner;
-          if (actualResult.moves.length > 0) foci[0] = actualResult.moves[actualResult.moves.length - 1];
-          currentPlayer = currentPlayer === 1 ? 2 : 1;
-          turns++;
-        }
-
-        const playerResults = [1, 2].map(p => {
-          const pExps = gameHistory.filter(exp => exp.player === p);
-          const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
-          let bonus = 0;
-          pExps.forEach(exp => {
-            bonus += rewards.efficiency;
-            bonus += exp.tacticalBonus;
-          });
-          const cap = Math.abs(base) * 0.5;
-          return { player: p, experiences: pExps, total: base + Math.max(-cap, Math.min(cap, bonus)) };
         });
 
-        if (winner) {
-          const winIdx = playerResults.findIndex(r => r.player === winner);
-          const loseIdx = playerResults.findIndex(r => r.player !== winner);
-          if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
-        }
+        board = result.board;
+        winner = result.winner;
+        if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
+        currentPlayer = currentPlayer === 1 ? 2 : 1;
+        turns++;
+      }
 
-        playerResults.forEach(res => {
-          res.experiences.forEach(exp => trainerRef.current!.addToMemory(exp.state, exp.action, res.total, null));
-        });
+      // Distribute rewards and save to memory
+      const playerResults = [1, 2].map(p => {
+        const pExps = gameHistory.filter(exp => exp.player === p);
+        const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
+        let bonus = 0;
+        pExps.forEach(exp => { bonus += rewards.efficiency; bonus += exp.tacticalBonus; });
+        const cap = Math.abs(base) * 0.5;
+        return { player: p, experiences: pExps, total: base + Math.max(-cap, Math.min(cap, bonus)) };
+      });
 
+      if (winner) {
+        const winIdx = playerResults.findIndex(r => r.player === winner);
+        const loseIdx = playerResults.findIndex(r => r.player !== winner);
+        if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
+      }
+
+      playerResults.forEach(res => {
+        res.experiences.forEach(exp => trainerRef.current?.addToMemory(exp.state, exp.action, res.total, null));
+      });
+
+      return { winner, turns, isRandomOpponent };
+    };
+
+    const runParallelCycle = async () => {
+      try {
+        // Run 4 games in parallel
+        const games = [1, 2, 3, 4].map(id => runSingleGame(id));
+        const results = await Promise.all(games);
+        
+        // Train on the new data
         const l = await trainerRef.current!.trainBatch(batchSize);
         if (l) setLoss(l);
-        const currentGen = genRef.current + 1;
-        setGenerations(currentGen);
-        if (currentGen > 0 && currentGen % autoSaveFreq === 0) performSave(true);
-        if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
-        if (active && isTraining) setTimeout(runCycle, 100);
+
+        const nextGen = genRef.current + results.length;
+        setGenerations(nextGen);
+        
+        if (nextGen % autoSaveFreq < results.length) performSave(true);
+
+        results.forEach(res => {
+          if (res.winner) addLog(`[Game] P${res.winner} won in ${res.turns} turns ${res.isRandomOpponent ? '(vs Random)' : ''}.`);
+        });
+
+        if (active && isTraining) setTimeout(runParallelCycle, 50);
       } catch (err) {
-        addLog(`[Stability] Error detected. Pausing for 3s...`);
-        if (active && isTraining) setTimeout(runCycle, 3000);
+        addLog(`[Stability] Error. Restarting...`);
+        if (active && isTraining) setTimeout(runParallelCycle, 3000);
       }
     };
-    runCycle();
+
+    runParallelCycle();
     return () => { active = false; };
   }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq]);
 
