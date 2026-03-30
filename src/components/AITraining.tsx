@@ -37,32 +37,28 @@ export const AITraining: React.FC<Props> = ({
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
   const [maxTurns, setMaxTurns] = useState(250);
-
   const [batchSize, setBatchSize] = useState(64);
   const [epsilon, setEpsilon] = useState(0.2);
   const [autoSaveFreq, setAutoSaveFreq] = useState(10);
-
+  
   const [rewards, setRewards] = useState({
     p1Win: 4.0,
     p2Win: 5.0,
     p1Draw: 0.4,
     p2Draw: 0.6,
-    threat: 0.02,
+    line3: 0.05,
+    line4: 0.15,
+    line5: 0.50,
+    block4: 0.20,
+    block5: 0.80,
     efficiency: -0.005
   });
-  
+
   const genRef = useRef(generations);
-
-  useEffect(() => {
-    setVault(getVaultMetadata());
-  }, []);
-
+  useEffect(() => { setVault(getVaultMetadata()); }, []);
   useEffect(() => { genRef.current = generations; }, [generations]);
 
-  const addLog = (msg: string) => {
-    setLog(prev => [msg, ...prev].slice(0, 50));
-  };
-
+  const addLog = (msg: string) => { setLog(prev => [msg, ...prev].slice(0, 50)); };
   const parseSafeFloat = (val: string): number => {
     const parsed = parseFloat(val);
     return isNaN(parsed) ? 0 : parsed;
@@ -85,20 +81,12 @@ export const AITraining: React.FC<Props> = ({
     const hexInputs = (3 * focalRadii.global * (focalRadii.global + 1) + 1) + 
                       (3 * focalRadii.self * (focalRadii.self + 1) + 1) + 
                       (3 * focalRadii.memory * (focalRadii.memory + 1) + 1) * 4;
-    return {
-      inputNodes: hexInputs + 4 + 12,
-      outputNodes: hexInputs
-    };
+    return { inputNodes: hexInputs + 4 + 12, outputNodes: hexInputs };
   };
 
   const handleCreateNew = () => {
     const { inputNodes, outputNodes } = getIOConfig();
-    const model = createModel({
-      inputNodes,
-      outputNodes,
-      hiddenLayers: layers,
-      learningRate: 0.001
-    });
+    const model = createModel({ inputNodes, outputNodes, hiddenLayers: layers, learningRate: 0.001 });
     initTrainer(model);
     setGenerations(0);
     setLoss(0);
@@ -117,30 +105,18 @@ export const AITraining: React.FC<Props> = ({
 
   const performSave = async (isAuto = false) => {
     if (!trainerRef.current || !modelRef.current) return;
-    
     try {
       const name = isAuto ? currentModelName : (prompt("Enter model name:", currentModelName) || currentModelName);
       const { inputNodes, outputNodes } = getIOConfig();
-
       const meta: ModelMetadata = {
-        name,
-        timestamp: Date.now(),
-        inputNodes,
-        outputNodes,
-        hiddenLayers: layers,
-        focalRadii: { ...focalRadii },
-        generation: genRef.current,
-        maxTurns,
-        batchSize,
-        epsilon
+        name, timestamp: Date.now(), inputNodes, outputNodes, hiddenLayers: layers,
+        focalRadii: { ...focalRadii }, generation: genRef.current, maxTurns, batchSize, epsilon
       };
-
       await trainerRef.current.saveModel(`indexeddb://${name}`);
       const vaultData = getVaultMetadata();
       const index = vaultData.findIndex(m => m.name === name);
       if (index !== -1) vaultData[index] = meta; else vaultData.push(meta);
       localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
-
       if (!isAuto) setCurrentModelName(name);
       setVault(getVaultMetadata());
       addLog(`[System] Saved '${name}' (${inputNodes} in, [${layers.join(',')}] hidden, ${outputNodes} out)`);
@@ -148,9 +124,7 @@ export const AITraining: React.FC<Props> = ({
       if (e.message === "GPU_BUSY") {
         if (!isAuto) addLog("[System] GPU busy, retrying save...");
         setTimeout(() => performSave(isAuto), 2000);
-      } else {
-        addLog("[Error] Save failed.");
-      }
+      } else { addLog("[Error] Save failed."); }
     }
   };
 
@@ -171,9 +145,7 @@ export const AITraining: React.FC<Props> = ({
       if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
       addLog(`[System] Loaded '${name}' (${meta?.inputNodes} in, [${meta?.hiddenLayers.join(',')}] hidden, ${meta?.outputNodes} out)`);
-    } catch (e) {
-      addLog(`[Error] Failed to load '${name}'.`);
-    }
+    } catch (e) { addLog(`[Error] Failed to load '${name}'.`); }
   };
 
   const handleDelete = async (name: string) => {
@@ -187,14 +159,11 @@ export const AITraining: React.FC<Props> = ({
     if (!modelRef.current || vault.length === 0) return;
     const opponentName = prompt("Enter opponent model name:", vault[0].name);
     if (!opponentName) return;
-
     setIsChampionship(true);
     addLog(`[Champ] Battle: ${currentModelName} vs ${opponentName}`);
-    
     try {
       const opponentModel = await loadModelFromVault(opponentName);
       const opponentMeta = vault.find(m => m.name === opponentName);
-      
       if (opponentMeta && (
         opponentMeta.focalRadii.global !== focalRadii.global ||
         opponentMeta.focalRadii.self !== focalRadii.self ||
@@ -204,11 +173,8 @@ export const AITraining: React.FC<Props> = ({
         setIsChampionship(false);
         return;
       }
-
-      let p1Wins = 0;
-      let p2Wins = 0;
+      let p1Wins = 0; let p2Wins = 0;
       const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards };
-
       for (let g = 0; g < 10; g++) {
         let board: BoardState = new Map();
         let currentPlayer: Player = 1;
@@ -216,26 +182,17 @@ export const AITraining: React.FC<Props> = ({
         let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
         let turns = 0;
         const modelIsP1 = g < 5;
-
         while (!winner && board.size < maxTurns * 2) {
           const m = (currentPlayer === 1 && modelIsP1) || (currentPlayer === 2 && !modelIsP1) ? modelRef.current : opponentModel;
           const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns, m);
-          board = result.board;
-          winner = result.winner;
+          board = result.board; winner = result.winner;
           if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
-          currentPlayer = currentPlayer === 1 ? 2 : 1;
-          turns++;
+          currentPlayer = currentPlayer === 1 ? 2 : 1; turns++;
         }
-
-        if (winner) {
-          if ((winner === 1 && modelIsP1) || (winner === 2 && !modelIsP1)) p1Wins++;
-          else p2Wins++;
-        }
+        if (winner) { if ((winner === 1 && modelIsP1) || (winner === 2 && !modelIsP1)) p1Wins++; else p2Wins++; }
         setChampResults({ p1: p1Wins, p2: p2Wins });
       }
-    } catch (e) {
-      addLog("[Error] Champ failed.");
-    }
+    } catch (e) { addLog("[Error] Champ failed."); }
     setIsChampionship(false);
   };
 
@@ -251,15 +208,34 @@ export const AITraining: React.FC<Props> = ({
         let winner: Player | null = null;
         let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
         let turns = 0;
-        const gameHistory: { state: number[], action: number, player: Player, turn: number, isThreat: boolean }[] = [];
+        const gameHistory: { state: number[], action: number, player: Player, turn: number, tacticalBonus: number }[] = [];
 
         while (!winner && turns < maxTurns && active && isTraining) {
           const stateBefore = encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns);
           const actualResult = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns);
           
           actualResult.moves.forEach((move, i) => {
-            const isThreat = getMaxLine(board, move.q, move.r, currentPlayer) >= 4;
-            gameHistory.push({ state: stateBefore, action: actualResult.actionIndices[i], player: currentPlayer, turn: turns, isThreat });
+            let tBonus = 0;
+            const myMax = getMaxLine(board, move.q, move.r, currentPlayer);
+            const otherPlayer = (currentPlayer === 1 ? 2 : 1) as Player;
+            const enemyMaxBefore = getMaxLine(board, move.q, move.r, otherPlayer);
+            
+            // Offensive Bonuses
+            if (myMax === 3) tBonus += rewards.line3;
+            if (myMax === 4) tBonus += rewards.line4;
+            if (myMax === 5) tBonus += rewards.line5;
+
+            // Defensive Bonuses (Blocking)
+            if (enemyMaxBefore === 4) tBonus += rewards.block4;
+            if (enemyMaxBefore === 5) tBonus += rewards.block5;
+
+            gameHistory.push({ 
+              state: stateBefore, 
+              action: actualResult.actionIndices[i], 
+              player: currentPlayer, 
+              turn: turns, 
+              tacticalBonus: tBonus 
+            });
           });
 
           board = actualResult.board;
@@ -275,7 +251,7 @@ export const AITraining: React.FC<Props> = ({
           let bonus = 0;
           pExps.forEach(exp => {
             bonus += rewards.efficiency;
-            if (exp.isThreat) bonus += rewards.threat * (1.0 - (exp.turn / maxTurns) * 0.5);
+            bonus += exp.tacticalBonus;
           });
           const cap = Math.abs(base) * 0.5;
           return { player: p, experiences: pExps, total: base + Math.max(-cap, Math.min(cap, bonus)) };
@@ -293,13 +269,10 @@ export const AITraining: React.FC<Props> = ({
 
         const l = await trainerRef.current!.trainBatch(batchSize);
         if (l) setLoss(l);
-
         const currentGen = genRef.current + 1;
         setGenerations(currentGen);
         if (currentGen > 0 && currentGen % autoSaveFreq === 0) performSave(true);
-
         if (winner) addLog(`[Game] P${winner} won in ${turns} turns.`);
-        
         if (active && isTraining) setTimeout(runCycle, 100);
       } catch (err) {
         addLog(`[Stability] Error detected. Pausing for 3s...`);
@@ -312,10 +285,7 @@ export const AITraining: React.FC<Props> = ({
 
   return (
     <div className="tab-content ai-view">
-      <div className="settings-header">
-        <h2>AI Training Lab</h2>
-      </div>
-
+      <div className="settings-header"><h2>AI Training Lab</h2></div>
       <section className="ai-top-bar card">
         <div className="top-bar-row">
           <div className="input-group-horizontal">
@@ -325,7 +295,6 @@ export const AITraining: React.FC<Props> = ({
             <div className="mini-input-row"><label>Auto-Save</label><input type="number" value={autoSaveFreq} onChange={e => setAutoSaveFreq(Math.max(1, parseInt(e.target.value)))} min="1" max="1000" /></div>
           </div>
         </div>
-
         <div className="top-bar-row" style={{marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px'}}>
           <div className="action-buttons">
             <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>{isTraining ? 'Stop' : 'Start Training'}</button>
@@ -350,10 +319,7 @@ export const AITraining: React.FC<Props> = ({
               {vault.map(m => (
                 <div key={m.name} className="vault-item">
                   <div className="vault-info"><strong>{m.name}</strong><span>{new Date(m.timestamp).toLocaleDateString()} • Gen {m.generation}</span></div>
-                  <div className="vault-actions">
-                    <button onClick={() => handleLoad(m.name)}>Load</button>
-                    <button className="delete-btn" onClick={() => handleDelete(m.name)}>&times;</button>
-                  </div>
+                  <div className="vault-actions"><button onClick={() => handleLoad(m.name)}>Load</button><button className="delete-btn" onClick={() => handleDelete(m.name)}>&times;</button></div>
                 </div>
               ))}
             </div>
@@ -363,21 +329,18 @@ export const AITraining: React.FC<Props> = ({
         <div className="ai-side-col">
           <section className="reward-config card full-height-card">
             <h3>Reward System</h3>
-            <p className="section-desc">Adjust incentives.</p>
             <div className="reward-grid">
-              <div className="input-group"><label>Win P1 / P2</label><div className="dual-input"><input type="number" value={rewards.p1Win || 0} step={0.1} onChange={e => setRewards({...rewards, p1Win: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.p2Win || 0} step={0.1} onChange={e => setRewards({...rewards, p2Win: parseSafeFloat(e.target.value)})} /></div></div>
-              <div className="input-group"><label>Draw P1 / P2</label><div className="dual-input"><input type="number" value={rewards.p1Draw || 0} step={0.1} onChange={e => setRewards({...rewards, p1Draw: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.p2Draw || 0} step={0.1} onChange={e => setRewards({...rewards, p2Draw: parseSafeFloat(e.target.value)})} /></div></div>
-              <div className="input-group"><label>Threat Detection</label><input type="number" value={rewards.threat || 0} step={0.01} onChange={e => setRewards({...rewards, threat: parseSafeFloat(e.target.value)})} /></div>
-              <div className="input-group"><label>Efficiency</label><input type="number" value={rewards.efficiency || 0} step={0.001} onChange={e => setRewards({...rewards, efficiency: parseSafeFloat(e.target.value)})} /></div>
+              <div className="input-group"><label>Win P1/P2</label><div className="dual-input"><input type="number" value={rewards.p1Win} onChange={e => setRewards({...rewards, p1Win: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.p2Win} onChange={e => setRewards({...rewards, p2Win: parseSafeFloat(e.target.value)})} /></div></div>
+              <div className="input-group"><label>Lines 3/4/5</label><div className="dual-input"><input type="number" value={rewards.line3} onChange={e => setRewards({...rewards, line3: parseSafeFloat(e.target.value)})} title="3 in a row"/><input type="number" value={rewards.line4} onChange={e => setRewards({...rewards, line4: parseSafeFloat(e.target.value)})} title="4 in a row"/><input type="number" value={rewards.line5} onChange={e => setRewards({...rewards, line5: parseSafeFloat(e.target.value)})} title="5 in a row"/></div></div>
+              <div className="input-group"><label>Blocks 4/5</label><div className="dual-input"><input type="number" value={rewards.block4} onChange={e => setRewards({...rewards, block4: parseSafeFloat(e.target.value)})} title="Block enemy 4"/><input type="number" value={rewards.block5} onChange={e => setRewards({...rewards, block5: parseSafeFloat(e.target.value)})} title="Block enemy 5"/></div></div>
+              <div className="input-group"><label>Eff.</label><input type="number" value={rewards.efficiency} onChange={e => setRewards({...rewards, efficiency: parseSafeFloat(e.target.value)})} /></div>
             </div>
           </section>
         </div>
       </div>
       <section className="training-log card" style={{marginTop: '20px'}}>
         <h3>System Logs</h3>
-        <div className="log-window" style={{height: '200px'}}>
-          {logs.map((log, i) => <p key={i}>{log}</p>)}
-        </div>
+        <div className="log-window" style={{height: '200px'}}>{logs.map((log, i) => <p key={i}>{log}</p>)}</div>
       </section>
     </div>
   );
