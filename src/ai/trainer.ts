@@ -50,8 +50,8 @@ export class Trainer {
     
     for (let i = 0; i < moveCount; i++) {
       const state = encodeState(currentBoard, player, foci, radii, turn, maxTurns);
-      let action: number;
-      let move: Coord;
+      let action: number = 0;
+      let move: Coord = foci[0];
 
       if (isFirstMove) {
         move = { q: 0, r: 0 };

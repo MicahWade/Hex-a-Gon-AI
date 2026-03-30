@@ -8,7 +8,6 @@ import { ModelConfig } from './components/ModelConfig';
 import { Settings } from './components/Settings';
 import { MoveLog } from './components/MoveLog';
 import { Trainer } from './ai/trainer';
-import { encodeState } from './ai/encoder';
 import type { NotationType, LogPosition, Theme, Player, Coord } from './types';
 import './App.css';
 

@@ -4,7 +4,7 @@ import { createModel } from '../ai/modelBuilder';
 import { Trainer } from '../ai/trainer';
 import type { TrainingConfig } from '../ai/trainer';
 import type { BoardState, Coord, Player } from '../types';
-import { getVaultMetadata, saveModelToVault, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
+import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
 import { encodeState } from '../ai/encoder';
 import { getMaxLine } from '../gameLogic';
@@ -36,10 +36,20 @@ export const AITraining: React.FC<Props> = ({
   const [vault, setVault] = useState<ModelMetadata[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
-  const [maxTurns, setMaxTurns] = useState(100);
+  const [maxTurns, setMaxTurns] = useState(250);
+
   const [batchSize, setBatchSize] = useState(64);
   const [epsilon, setEpsilon] = useState(0.2);
   const [autoSaveFreq, setAutoSaveFreq] = useState(10);
+
+  const [rewards, setRewards] = useState({
+    p1Win: 4.0,
+    p2Win: 5.0,
+    p1Draw: 0.4,
+    p2Draw: 0.6,
+    threat: 0.02,
+    efficiency: -0.005
+  });
   
   const genRef = useRef(generations);
 
