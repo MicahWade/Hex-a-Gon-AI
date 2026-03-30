@@ -30,6 +30,7 @@ function App() {
   const [loss, setLoss] = useState(0);
   const [targetDepth, setTargetDepth] = useState(3);
   const [activeModelName, setActiveModelName] = useState<string>("default-model");
+  const [isAiLoaded, setIsAiLoaded] = useState(false);
 
   // SHARED AI INSTANCE
   const sharedModelRef = useRef<tf.LayersModel | null>(null);
@@ -51,7 +52,31 @@ function App() {
     resetGame
   } = useHexGame();
 
-  // Handle AI turn in Play tab
+  // Auto-load last model on boot
+  useEffect(() => {
+    const autoLoad = async () => {
+      try {
+        // Try to load the standard model
+        const model = await tf.loadLayersModel('indexeddb://hex-a-gon-model');
+        if (!model.optimizer) {
+          model.compile({
+            optimizer: tf.train.adam(0.001),
+            loss: 'categoricalCrossentropy',
+            metrics: ['accuracy']
+          });
+        }
+        sharedModelRef.current = model;
+        sharedTrainerRef.current = new Trainer(model);
+        setIsAiLoaded(true);
+        setActiveModelName("hex-a-gon-model");
+      } catch (e) {
+        console.log("No default model to auto-load.");
+      }
+    };
+    autoLoad();
+  }, []);
+
+  // Handle AI turn
   useEffect(() => {
     const isAiTurn = gameMode === 'pvai' && gameStarted && !winner && currentPlayer !== userPlayer && sharedTrainerRef.current;
     
@@ -60,16 +85,13 @@ function App() {
       
       const timer = setTimeout(async () => {
         const config = { epsilon: 0, rewards: {} } as any;
-        
-        // Build Focal Windows from recent history
         const p1History = [...history].filter(m => m.player === 1).reverse();
         const p2History = [...history].filter(m => m.player === 2).reverse();
         const lastMove = history.length > 0 ? history[history.length - 1].coord : { q: 0, r: 0 };
         const aiLastMove = (userPlayer === 1 ? p2History : p1History)[0]?.coord || { q: 0, r: 0 };
 
         const foci: Coord[] = [
-          lastMove, // Global
-          aiLastMove, // Self
+          lastMove, aiLastMove,
           p1History[0]?.coord || { q: 0, r: 0 },
           p1History[1]?.coord || { q: 0, r: 0 },
           p2History[0]?.coord || { q: 0, r: 0 },
@@ -78,7 +100,6 @@ function App() {
 
         try {
           const result = await sharedTrainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turn, 100);
-          
           if (result.moves.length > 0) {
             makeMove(result.moves[0].q, result.moves[0].r);
             if (result.moves.length > 1) {
@@ -134,7 +155,7 @@ function App() {
             {gameMode === 'pvai' && (
               <div className="active-ai-indicator">
                 🤖 AI: <strong>{activeModelName}</strong>
-                {!sharedTrainerRef.current && <p style={{color: '#e74c3c', fontSize: '10px', marginTop: '5px'}}>No model loaded. Go to AI tab to init/load.</p>}
+                {!isAiLoaded && <p style={{color: '#e74c3c', fontSize: '10px', marginTop: '5px'}}>No model loaded. Go to AI tab to init/load.</p>}
               </div>
             )}
             <div className="game-mode-selector">
@@ -150,7 +171,7 @@ function App() {
                   <button className={userPlayer === 2 ? 'active-p2' : ''} onClick={() => setUserPlayer(2)}>Red (P2)</button>
                   <button className={(userPlayer as any) === 'random' ? 'active-rand' : ''} onClick={() => setUserPlayer('random' as any)}>Random</button>
                 </div>
-                <button className="start-game-btn" onClick={handleStartGame} disabled={!sharedTrainerRef.current}>Start Game</button>
+                <button className="start-game-btn" onClick={handleStartGame} disabled={!isAiLoaded}>Start Game</button>
               </div>
             )}
 
@@ -229,6 +250,7 @@ function App() {
           setCurrentModelName={setActiveModelName}
           trainerRef={sharedTrainerRef}
           modelRef={sharedModelRef}
+          setIsAiLoaded={setIsAiLoaded}
         />
       )}
       {activeTab === 'architecture' && (

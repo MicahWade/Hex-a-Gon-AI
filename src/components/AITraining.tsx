@@ -24,12 +24,13 @@ interface Props {
   setCurrentModelName: (name: string) => void;
   trainerRef: React.MutableRefObject<Trainer | null>;
   modelRef: React.MutableRefObject<tf.LayersModel | null>;
+  setIsAiLoaded: (val: boolean) => void;
 }
 
 export const AITraining: React.FC<Props> = ({ 
   isTraining, setIsTraining, layers, setLayers, focalRadii, setFocalRadii,
   generations, setGenerations, loss, setLoss,
-  currentModelName, setCurrentModelName, trainerRef, modelRef
+  currentModelName, setCurrentModelName, trainerRef, modelRef, setIsAiLoaded
 }) => {
   const [logs, setLog] = useState<string[]>(["[System] Ready for training."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
@@ -67,6 +68,7 @@ export const AITraining: React.FC<Props> = ({
     }
     modelRef.current = model;
     trainerRef.current = new Trainer(model);
+    setIsAiLoaded(true);
   };
 
   const getIOConfig = () => {
@@ -90,7 +92,7 @@ export const AITraining: React.FC<Props> = ({
     initTrainer(model);
     setGenerations(0);
     setLoss(0);
-    addLog(`[System] New model initialized.`);
+    addLog(`[System] New model: ${inputNodes} in -> [${layers.join(',')}] -> ${outputNodes} out`);
   };
 
   const toggleTraining = async () => {
@@ -131,7 +133,7 @@ export const AITraining: React.FC<Props> = ({
 
       if (!isAuto) setCurrentModelName(name);
       setVault(getVaultMetadata());
-      addLog(`[System] Model saved ${isAuto ? '(Auto)' : ''}.`);
+      addLog(`[System] Saved '${name}' (${inputNodes} in, [${layers.join(',')}] hidden, ${outputNodes} out)`);
     } catch (e: any) {
       if (e.message === "GPU_BUSY") {
         if (!isAuto) addLog("[System] GPU busy, retrying save...");
@@ -153,11 +155,12 @@ export const AITraining: React.FC<Props> = ({
         if (meta.maxTurns !== undefined) setMaxTurns(meta.maxTurns);
         if (meta.batchSize !== undefined) setBatchSize(meta.batchSize);
         if (meta.epsilon !== undefined) setEpsilon(meta.epsilon);
+        addLog(`[System] Synced Architecture, Stats & Settings for '${name}'.`);
       }
       initTrainer(model);
       if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
-      addLog(`[System] Model '${name}' loaded.`);
+      addLog(`[System] Loaded '${name}' (${meta?.inputNodes} in, [${meta?.hiddenLayers.join(',')}] hidden, ${meta?.outputNodes} out)`);
     } catch (e) {
       addLog(`[Error] Failed to load '${name}'.`);
     }
@@ -278,7 +281,7 @@ export const AITraining: React.FC<Props> = ({
           res.experiences.forEach(exp => trainerRef.current!.addToMemory(exp.state, exp.action, res.total, null));
         });
 
-        const l = await trainerRef.current!.trainBatch(config.batchSize);
+        const l = await trainerRef.current!.trainBatch(batchSize);
         if (l) setLoss(l);
 
         const currentGen = genRef.current + 1;
