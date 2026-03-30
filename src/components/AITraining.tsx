@@ -50,7 +50,7 @@ export const AITraining: React.FC<Props> = ({
     line4: 0.15,
     line5: 0.50,
     block4: 0.20,
-    block5: 0.80,
+    block5: 0.50,
     efficiency: -0.005
   });
 
