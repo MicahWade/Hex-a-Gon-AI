@@ -22,12 +22,14 @@ interface Props {
   setLoss: React.Dispatch<React.SetStateAction<number>>;
   currentModelName: string;
   setCurrentModelName: (name: string) => void;
+  trainerRef: React.MutableRefObject<Trainer | null>;
+  modelRef: React.MutableRefObject<tf.LayersModel | null>;
 }
 
 export const AITraining: React.FC<Props> = ({ 
   isTraining, setIsTraining, layers, setLayers, focalRadii, setFocalRadii,
   generations, setGenerations, loss, setLoss,
-  currentModelName, setCurrentModelName
+  currentModelName, setCurrentModelName, trainerRef, modelRef
 }) => {
   const [logs, setLog] = useState<string[]>(["[System] Ready for training."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
@@ -37,25 +39,13 @@ export const AITraining: React.FC<Props> = ({
   const [batchSize, setBatchSize] = useState(64);
   const [epsilon, setEpsilon] = useState(0.2);
   const [autoSaveFreq, setAutoSaveFreq] = useState(10);
-
-  const [rewards, setRewards] = useState({
-    p1Win: 2.0,
-    p2Win: 2.2,
-    p1Draw: 0.4,
-    p2Draw: 0.6,
-    threat: 0.02,
-    efficiency: -0.005
-  });
-
-  const trainerRef = useRef<Trainer | null>(null);
-  const modelRef = useRef<tf.LayersModel | null>(null);
+  
   const genRef = useRef(generations);
 
   useEffect(() => {
     setVault(getVaultMetadata());
   }, []);
 
-  // Keep genRef in sync with prop for training loop
   useEffect(() => { genRef.current = generations; }, [generations]);
 
   const addLog = (msg: string) => {
@@ -133,9 +123,7 @@ export const AITraining: React.FC<Props> = ({
         epsilon
       };
 
-      // USE THREAD-SAFE SAVE
       await trainerRef.current.saveModel(`indexeddb://${name}`);
-      // Save metadata separately
       const vaultData = getVaultMetadata();
       const index = vaultData.findIndex(m => m.name === name);
       if (index !== -1) vaultData[index] = meta; else vaultData.push(meta);
@@ -193,6 +181,7 @@ export const AITraining: React.FC<Props> = ({
     try {
       const opponentModel = await loadModelFromVault(opponentName);
       const opponentMeta = vault.find(m => m.name === opponentName);
+      
       if (opponentMeta && (
         opponentMeta.focalRadii.global !== focalRadii.global ||
         opponentMeta.focalRadii.self !== focalRadii.self ||
@@ -224,13 +213,15 @@ export const AITraining: React.FC<Props> = ({
           currentPlayer = currentPlayer === 1 ? 2 : 1;
           turns++;
         }
+
         if (winner) {
-          if ((winner === 1 && modelIsP1) || (winner === 2 && !modelIsP1)) p1Wins++; else p2Wins++;
+          if ((winner === 1 && modelIsP1) || (winner === 2 && !modelIsP1)) p1Wins++;
+          else p2Wins++;
         }
         setChampResults({ p1: p1Wins, p2: p2Wins });
       }
     } catch (e) {
-      addLog("[Error] Champ match failed.");
+      addLog("[Error] Champ failed.");
     }
     setIsChampionship(false);
   };
