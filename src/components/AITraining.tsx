@@ -44,7 +44,7 @@ export const AITraining: React.FC<Props> = ({
   const [rewards, setRewards] = useState({
     p1Win: 4.0, p2Win: 5.0, p1Draw: 0.4, p2Draw: 0.6,
     line3: 0.05, line4: 0.15, line5: 0.50, block4: 0.20, block5: 0.50, 
-    efficiency: -0.005, illegal: -0.50
+    efficiency: -0.005, illegal: -0.05
   });
 
   const genRef = useRef(generations);
