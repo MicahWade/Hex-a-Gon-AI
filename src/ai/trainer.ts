@@ -26,68 +26,20 @@ export interface TrainingConfig {
 
 export class Trainer {
   private model: tf.LayersModel;
-  private targetModel: tf.LayersModel | null = null; // Double DQN: Target Network
-  private memory: { state: number[]; action: number; reward: number; nextState: number[]; priority: number }[] = [];
+  private memory: { state: number[]; action: number; reward: number; nextState: number[] | null; priority: number }[] = [];
   private maxMemory = 2000;
   private isFitting = false; 
 
   constructor(model: tf.LayersModel) {
     this.model = model;
-    this.updateTargetModel();
   }
 
-  // Double DQN: Copy weights to target model
-  updateTargetModel() {
-    if (!this.targetModel) {
-      // Create a clone
-      const json = this.model.toJSON();
-      // This is a workaround since tf.model.fromJSON is tricky with custom lambda layers
-      // We'll just build it manually or use the main model for now if clone fails
-      this.targetModel = this.model; 
+  setLearningRate(lr: number) {
+    if (this.model.optimizer) {
+      (this.model.optimizer as any).learningRate = lr;
     }
-    // In a real implementation, we would copy weights. 
-    // For this environment, we'll use soft-updates or periodic syncs.
   }
 
-  /**
-   * Vectorized Prediction: Takes multiple states and returns multiple move lists.
-   */
-  async predictActionBatch(states: number[][], epsilon: number): Promise<({prob: number, idx: number}[] | number)[]> {
-    const inputSize = this.model.inputs[0].shape[1] as number;
-    const outputSize = this.model.outputs[0].shape[1] as number;
-
-    const results: ({prob: number, idx: number}[] | number)[] = [];
-    const inferenceStates: number[] = [];
-    const inferenceIndices: number[] = [];
-
-    states.forEach((state, i) => {
-      if (Math.random() < epsilon) {
-        results.push(Math.floor(Math.random() * outputSize));
-      } else {
-        results.push([]); // Placeholder
-        inferenceStates.push(...state);
-        inferenceIndices.push(i);
-      }
-    });
-
-    if (inferenceIndices.length > 0) {
-      const predictions = tf.tidy(() => {
-        const input = tf.tensor2d(new Float32Array(inferenceStates), [inferenceIndices.length, inputSize]);
-        return (this.model.predict(input) as tf.Tensor).arraySync() as number[][];
-      });
-
-      predictions.forEach((probs, i) => {
-        const sorted = probs
-          .map((prob, idx) => ({ prob, idx }))
-          .sort((a, b) => b.prob - a.prob);
-        results[inferenceIndices[i]] = sorted;
-      });
-    }
-
-    return results;
-  }
-
-  // Non-vectorized version for live play
   async getTopMoves(state: number[], count: number = 3): Promise<{prob: number, idx: number}[]> {
     const inputSize = this.model.inputs[0].shape[1] as number;
     return tf.tidy(() => {
@@ -207,14 +159,9 @@ export class Trainer {
     const targets = tf.tidy(() => {
       const currentPredictions = this.model.predict(states) as tf.Tensor;
       const targetData = currentPredictions.arraySync() as number[][];
-
       batch.forEach((m, i) => {
-        if (m.action < outputSize) {
-          // Double DQN Logic would go here (using target model)
-          targetData[i][m.action] = m.reward;
-        }
+        if (m.action < outputSize) targetData[i][m.action] = m.reward;
       });
-
       return tf.tensor2d(targetData);
     });
 
@@ -240,7 +187,7 @@ export class Trainer {
 
   clearMemory() { this.memory = []; }
 
-  addToMemory(state: number[], action: number, reward: number, nextState: number[], priority: number = 1.0) {
+  addToMemory(state: number[], action: number, reward: number, nextState: number[] | null, priority: number = 1.0) {
     const expectedSize = (this.model.inputs[0].shape[1] as number);
     if (state.length !== expectedSize) return;
     this.memory.push({ state, action, reward, nextState, priority });

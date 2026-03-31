@@ -8,34 +8,35 @@ export interface ModelConfigParams {
 }
 
 /**
- * Builds a Deep Q-Network.
- * (Simplified for maximum compatibility)
+ * Builds a robust Deep Q-Network.
+ * Standard Sequential model for maximum stability.
  */
 export function createModel(params: ModelConfigParams): tf.LayersModel {
   const model = tf.sequential();
 
-  // 1. Shared Feature Extractor
+  // Input Layer
   model.add(tf.layers.dense({
     units: params.hiddenLayers[0],
     inputShape: [params.inputNodes],
     activation: 'relu',
     kernelInitializer: 'leCunNormal'
   }));
-  model.add(tf.layers.dropout({ rate: 0.1 }));
 
+  // Hidden Layers
   for (let i = 1; i < params.hiddenLayers.length; i++) {
     model.add(tf.layers.dense({
       units: params.hiddenLayers[i],
       activation: 'relu',
       kernelInitializer: 'leCunNormal'
     }));
+    // Dropout helps prevent overfitting in complex games
     model.add(tf.layers.dropout({ rate: 0.1 }));
   }
 
-  // Output Layer: Q-values for each move
+  // Output Layer: Q-values for every possible move
   model.add(tf.layers.dense({
     units: params.outputNodes,
-    activation: 'linear' // Q-learning expects raw values
+    activation: 'linear'
   }));
 
   const optimizer = tf.train.adam(params.learningRate);
