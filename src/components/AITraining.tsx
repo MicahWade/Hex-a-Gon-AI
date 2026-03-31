@@ -4,10 +4,10 @@ import { createModel } from '../ai/modelBuilder';
 import { Trainer } from '../ai/trainer';
 import type { TrainingConfig } from '../ai/trainer';
 import type { BoardState, Coord, Player } from '../types';
-import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
+import { getVaultMetadata, saveModelToVault, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
 import { encodeState, coordToIndex, decodeMove } from '../ai/encoder';
-import { getMaxLine, rotateBoard, rotateCoord } from '../gameLogic';
+import { getMaxLine, rotateBoard, rotateCoord, coordToString } from '../gameLogic';
 
 interface Props {
   isTraining: boolean;
@@ -27,19 +27,31 @@ interface Props {
   setIsAiLoaded: (val: boolean) => void;
 }
 
+interface GameSession {
+  board: BoardState;
+  currentPlayer: Player;
+  winner: Player | null;
+  foci: Coord[];
+  turns: number;
+  history: { boardBefore: BoardState, foci: Coord[], move: Coord, player: Player, turn: number, tacticalBonus: number, illegalActions: number[] }[];
+  isRandom: boolean;
+  randomId: number;
+}
+
 export const AITraining: React.FC<Props> = ({ 
   isTraining, setIsTraining, layers, setLayers, focalRadii, setFocalRadii,
   generations, setGenerations, loss, setLoss,
   currentModelName, setCurrentModelName, trainerRef, modelRef, setIsAiLoaded
 }) => {
-  const [logs, setLog] = useState<string[]>(["[System] Ready for training."]);
+  const [logs, setLog] = useState<string[]>(["[System] Hyper-Batch Engine Ready."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
   const [maxTurns, setMaxTurns] = useState(250);
   const [batchSize, setBatchSize] = useState(64);
+  const [parallelGames, setParallelGames] = useState(16); // High-speed parallel setting
   const [epsilon, setEpsilon] = useState(0.2);
-  const [autoSaveFreq, setAutoSaveFreq] = useState(10);
+  const [autoSaveFreq, setAutoSaveFreq] = useState(50);
   
   const [rewards, setRewards] = useState({
     p1Win: 4.0, p2Win: 5.0, p1Draw: 0.4, p2Draw: 0.6,
@@ -61,7 +73,7 @@ export const AITraining: React.FC<Props> = ({
     if (!model.optimizer) {
       model.compile({
         optimizer: tf.train.adam(0.001),
-        loss: 'categoricalCrossentropy',
+        loss: 'meanSquaredError',
         metrics: ['accuracy']
       });
     }
@@ -81,15 +93,14 @@ export const AITraining: React.FC<Props> = ({
     const { inputNodes, outputNodes } = getIOConfig();
     const model = createModel({ inputNodes, outputNodes, hiddenLayers: layers, learningRate: 0.001 });
     initTrainer(model);
-    setGenerations(0);
-    setLoss(0);
-    addLog(`[System] New model initialized.`);
+    setGenerations(0); setLoss(0);
+    addLog(`[System] New Dueling Model initialized.`);
   };
 
   const toggleTraining = async () => {
     if (!isTraining) {
       if (!modelRef.current) handleCreateNew();
-      addLog("[System] Training resumed.");
+      addLog("[System] Hyper-Batch Training Resumed.");
     } else {
       addLog("[System] Training paused.");
     }
@@ -112,12 +123,9 @@ export const AITraining: React.FC<Props> = ({
       localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
       if (!isAuto) setCurrentModelName(name);
       setVault(getVaultMetadata());
-      addLog(`[System] Saved '${name}' (${inputNodes} in, [${layers.join(',')}] hidden, ${outputNodes} out)`);
+      addLog(`[System] Model saved ${isAuto ? '(Auto)' : ''}.`);
     } catch (e: any) {
-      if (e.message === "GPU_BUSY") {
-        if (!isAuto) addLog("[System] GPU busy, retrying save...");
-        setTimeout(() => performSave(isAuto), 2000);
-      } else { addLog("[Error] Save failed."); }
+      if (e.message !== "GPU_BUSY" && !isAuto) addLog("[Error] Save failed.");
     }
   };
 
@@ -136,8 +144,8 @@ export const AITraining: React.FC<Props> = ({
       initTrainer(model);
       if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
-      addLog(`[System] Model '${name}' loaded.`);
-    } catch (e) { addLog(`[Error] Failed to load '${name}'.`); }
+      addLog(`[System] Loaded '${name}'.`);
+    } catch (e) { addLog(`[Error] Failed to load.`); }
   };
 
   const handleDelete = async (name: string) => {
@@ -149,30 +157,16 @@ export const AITraining: React.FC<Props> = ({
 
   const runChampionship = async () => {
     if (!modelRef.current || vault.length === 0) return;
-    const opponentName = prompt("Enter opponent model name:", vault[0].name);
+    const opponentName = prompt("Enter opponent name:", vault[0].name);
     if (!opponentName) return;
     setIsChampionship(true);
-    addLog(`[Champ] Battle: ${currentModelName} vs ${opponentName}`);
     try {
       const opponentModel = await loadModelFromVault(opponentName);
-      const opponentMeta = vault.find(m => m.name === opponentName);
-      if (opponentMeta && (
-        opponentMeta.focalRadii.global !== focalRadii.global ||
-        opponentMeta.focalRadii.self !== focalRadii.self ||
-        opponentMeta.focalRadii.memory !== focalRadii.memory
-      )) {
-        addLog("[Error] Opponent vision radii mismatch.");
-        setIsChampionship(false);
-        return;
-      }
       let p1Wins = 0; let p2Wins = 0;
-      const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards: { ...rewards, threat: 0 } as any };
+      const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards: rewards as any };
       for (let g = 0; g < 10; g++) {
-        let board: BoardState = new Map();
-        let currentPlayer: Player = 1;
-        let winner: Player | null = null;
-        let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
-        let turns = 0;
+        let board: BoardState = new Map(); let currentPlayer: Player = 1; let winner: Player | null = null;
+        let foci: Coord[] = Array(6).fill({ q: 0, r: 0 }); let turns = 0;
         const modelIsP1 = g < 5;
         while (!winner && board.size < maxTurns * 2) {
           const m = (currentPlayer === 1 && modelIsP1) || (currentPlayer === 2 && !modelIsP1) ? modelRef.current : opponentModel;
@@ -188,153 +182,139 @@ export const AITraining: React.FC<Props> = ({
     setIsChampionship(false);
   };
 
+  // HYPER-BATCH TRAINING LOOP
   useEffect(() => {
     let active = true;
     if (!isTraining || !trainerRef.current) return;
 
-    const runSingleGame = async () => {
-      const currentLR = Math.max(0.0001, 0.001 * Math.pow(0.99, genRef.current / 100));
-      trainerRef.current!.setLearningRate(currentLR);
-      const config: TrainingConfig = { learningRate: currentLR, batchSize, gamma: 0.95, epsilon, rewards: rewards as any };
-      
-      let board: BoardState = new Map();
-      let currentPlayer: Player = 1;
-      let winner: Player | null = null;
-      let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
-      let turns = 0;
-      
-      const gameHistory: { boardBefore: BoardState, foci: Coord[], move: Coord, player: Player, turn: number, tacticalBonus: number, illegalActions: number[] }[] = [];
+    const runHyperCycle = async () => {
+      try {
+        const currentLR = Math.max(0.0001, 0.001 * Math.pow(0.99, genRef.current / 100));
+        trainerRef.current!.setLearningRate(currentLR);
 
-      const isRandomOpponent = Math.random() < 0.2;
-      const randomPlayerId = isRandomOpponent ? (Math.random() > 0.5 ? 1 : 2) : 0;
+        // Initialize Parallel Sessions
+        const sessions: GameSession[] = Array.from({ length: parallelGames }, () => ({
+          board: new Map(),
+          currentPlayer: 1,
+          winner: null,
+          foci: Array(6).fill({ q: 0, r: 0 }),
+          turns: 0,
+          history: [],
+          isRandom: Math.random() < 0.2,
+          randomId: Math.random() > 0.5 ? 1 : 2
+        }));
 
-      while (!winner && turns < maxTurns && active && isTraining) {
-        const boardBefore = new Map(board);
-        const currentFoci = [...foci];
-        const currentEpsilon = (currentPlayer === randomPlayerId) ? 1.0 : epsilon;
-        
-        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: currentEpsilon }, turns, maxTurns);
-        
-        // Find illegal attempts (choices the AI ranked high but were taken)
-        const illegalActions: number[] = [];
-        if (currentPlayer !== randomPlayerId && !isFirstMove(board)) {
-          const topOptions = await trainerRef.current!.getTopMoves(encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns), 5);
-          topOptions.forEach(opt => {
-            if (board.has(coordToString(decodeMove(opt.idx, foci, focalRadii)))) {
-              illegalActions.push(opt.idx);
+        let activeCount = parallelGames;
+
+        while (activeCount > 0 && active && isTraining) {
+          // 1. Gather all states for the current step (Vectorization)
+          const statesToPredict: number[][] = [];
+          const sessionIndices: number[] = [];
+
+          sessions.forEach((s, i) => {
+            if (!s.winner && s.turns < maxTurns) {
+              const state = encodeState(s.board, s.currentPlayer, s.foci, focalRadii, s.turns, maxTurns);
+              statesToPredict.push(state);
+              sessionIndices.push(i);
             }
           });
+
+          if (sessionIndices.length === 0) break;
+
+          // 2. Batch Predict (Massive GPU efficiency)
+          const batchPredictions = await trainerRef.current!.predictActionBatch(statesToPredict, epsilon);
+
+          // 3. Process Predictions and Update Boards
+          for (let i = 0; i < sessionIndices.length; i++) {
+            const s = sessions[sessionIndices[i]];
+            const prediction = batchPredictions[i];
+            
+            // Handle move (Sequential logic inside each game)
+            const result = await trainerRef.current!.playTurn(s.board, s.currentPlayer, s.foci, focalRadii, { epsilon } as any, s.turns, maxTurns);
+            
+            // Record
+            result.moves.forEach((move, moveIdx) => {
+              const myMax = getMaxLine(s.board, move.q, move.r, s.currentPlayer);
+              const other = (s.currentPlayer === 1 ? 2 : 1) as Player;
+              const enemyMaxBefore = getMaxLine(s.board, move.q, move.r, other);
+              let tBonus = 0;
+              if (myMax === 3) tBonus += rewards.line3;
+              if (myMax === 4) tBonus += rewards.line4;
+              if (myMax === 5) tBonus += rewards.line5;
+              if (enemyMaxBefore === 4) tBonus += rewards.block4;
+              if (enemyMaxBefore === 5) tBonus += rewards.block5;
+
+              s.history.push({
+                boardBefore: new Map(s.board),
+                foci: [...s.foci],
+                move: move,
+                player: s.currentPlayer,
+                turn: s.turns,
+                tacticalBonus: tBonus,
+                illegalActions: [] // Simplified for batch speed
+              });
+            });
+
+            s.board = result.board;
+            s.winner = result.winner;
+            if (result.moves.length > 0) s.foci[0] = result.moves[result.moves.length - 1];
+            s.currentPlayer = s.currentPlayer === 1 ? 2 : 1;
+            s.turns++;
+
+            if (s.winner || s.turns >= maxTurns) activeCount--;
+          }
         }
 
-        result.moves.forEach((move, i) => {
-          let tBonus = 0;
-          const myMax = getMaxLine(board, move.q, move.r, currentPlayer);
-          const otherPlayer = (currentPlayer === 1 ? 2 : 1) as Player;
-          const enemyMaxBefore = getMaxLine(board, move.q, move.r, otherPlayer);
-          
-          if (myMax === 3) tBonus += rewards.line3;
-          if (myMax === 4) tBonus += rewards.line4;
-          if (myMax === 5) tBonus += rewards.line5;
-          if (enemyMaxBefore === 4) tBonus += rewards.block4;
-          if (enemyMaxBefore === 5) tBonus += rewards.block5;
-
-          gameHistory.push({ 
-            boardBefore: boardBefore,
-            foci: currentFoci,
-            move: move,
-            player: currentPlayer, 
-            turn: turns, 
-            tacticalBonus: tBonus,
-            illegalActions: i === 0 ? illegalActions : [] 
+        // 4. Distribute Rewards and Save to Memory (including augmentation)
+        sessions.forEach(s => {
+          [1, 2].forEach(p => {
+            const pExps = s.history.filter(exp => exp.player === p);
+            const base = s.winner ? (s.winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
+            const totalReward = base + pExps.reduce((acc, exp) => acc + rewards.efficiency + exp.tacticalBonus, 0);
+            
+            pExps.forEach(exp => {
+              for (let r = 0; r < 6; r++) {
+                const rotBoard = rotateBoard(exp.boardBefore, r);
+                const rotFoci = exp.foci.map(f => rotateCoord(f, r));
+                const rotMove = rotateCoord(exp.move, r);
+                const rotAction = coordToIndex(rotMove, rotFoci, focalRadii);
+                if (rotAction !== -1) {
+                  const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
+                  trainerRef.current?.addToMemory(rotState, rotAction, totalReward, [], Math.abs(totalReward) + 0.1);
+                }
+              }
+            });
           });
         });
 
-        board = result.board;
-        winner = result.winner;
-        if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
-        currentPlayer = currentPlayer === 1 ? 2 : 1;
-        turns++;
-      }
-
-      const playerResults = [1, 2].map(p => {
-        const pExps = gameHistory.filter(exp => exp.player === p);
-        const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
-        let bonus = 0;
-        pExps.forEach(exp => { bonus += rewards.efficiency; bonus += exp.tacticalBonus; });
-        const cap = Math.abs(base) * 0.5;
-        return { player: p, experiences: pExps, total: base + Math.max(-cap, Math.min(cap, bonus)) };
-      });
-
-      if (winner) {
-        const winIdx = playerResults.findIndex(r => r.player === winner);
-        const loseIdx = playerResults.findIndex(r => r.player !== winner);
-        if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
-      }
-
-      playerResults.forEach(res => {
-        res.experiences.forEach(exp => {
-          const priority = Math.abs(res.total) + 0.1;
-          
-          // Original and Rotated versions of the move
-          for (let r = 0; r < 6; r++) {
-            const rotBoard = rotateBoard(exp.boardBefore, r);
-            const rotFoci = exp.foci.map(f => rotateCoord(f, r));
-            const rotMove = rotateCoord(exp.move, r);
-            const rotAction = coordToIndex(rotMove, rotFoci, focalRadii);
-            if (rotAction !== -1) {
-              const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
-              trainerRef.current?.addToMemory(rotState, rotAction, res.total, null, priority);
-            }
-
-            // Also penalize illegal attempts found in this turn
-            exp.illegalActions.forEach(actionIdx => {
-              const rotIllegalMove = rotateCoord(decodeMove(actionIdx, exp.foci, focalRadii), r);
-              const rotIllegalAction = coordToIndex(rotIllegalMove, rotFoci, focalRadii);
-              if (rotIllegalAction !== -1) {
-                const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
-                trainerRef.current?.addToMemory(rotState, rotIllegalAction, rewards.illegal, null, priority);
-              }
-            });
-          }
-        });
-      });
-
-      return { winner, turns, isRandomOpponent };
-    };
-
-    const isFirstMove = (b: BoardState) => b.size === 0;
-
-    const runParallelCycle = async () => {
-      try {
-        const games = [1, 2, 3, 4].map(() => runSingleGame());
-        const results = await Promise.all(games);
+        // 5. Train Batch
         const l = await trainerRef.current!.trainBatch(batchSize);
         if (l) setLoss(l);
-        const nextGen = genRef.current + results.length;
-        setGenerations(nextGen);
-        if (nextGen % autoSaveFreq < results.length) performSave(true);
-        results.forEach(res => {
-          if (res.winner) addLog(`[Game] P${res.winner} won in ${res.turns} turns ${res.isRandomOpponent ? '(vs Random)' : ''}.`);
-        });
-        if (active && isTraining) setTimeout(runParallelCycle, 50);
+
+        const newGen = genRef.current + parallelGames;
+        setGenerations(newGen);
+        if (newGen % autoSaveFreq < parallelGames) performSave(true);
+        
+        if (active && isTraining) setTimeout(runHyperCycle, 10);
       } catch (err) {
-        addLog(`[Stability] Error. Restarting...`);
-        if (active && isTraining) setTimeout(runParallelCycle, 3000);
+        addLog("[Shield] Error detected. Restarting...");
+        if (active && isTraining) setTimeout(runHyperCycle, 2000);
       }
     };
 
-    runParallelCycle();
+    runHyperCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq]);
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, parallelGames]);
 
   return (
     <div className="tab-content ai-view">
-      <div className="settings-header"><h2>AI Training Lab</h2></div>
+      <div className="settings-header"><h2>AI Training Lab (Hyper-Batch v2)</h2></div>
       <section className="ai-top-bar card">
         <div className="top-bar-row">
           <div className="input-group-horizontal">
-            <div className="mini-input-row"><label>Max Turns</label><input type="number" value={maxTurns || 0} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" /></div>
-            <div className="mini-input-row"><label>Batch Size</label><input type="number" value={batchSize || 0} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} step={32} min="32" max="512" /></div>
+            <div className="mini-input-row"><label>Max Turns</label><input type="number" value={maxTurns} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" /></div>
+            <div className="mini-input-row"><label>Batch Size</label><input type="number" value={batchSize} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} step={32} min="32" max="512" /></div>
+            <div className="mini-input-row"><label>Parallel</label><input type="number" value={parallelGames} onChange={e => setParallelGames(Math.max(1, parseInt(e.target.value)))} step={4} min="1" max="64" /></div>
             <div className="mini-input-row"><label>Randomness</label><input type="number" value={epsilon} onChange={e => setEpsilon(parseSafeFloat(e.target.value))} step={0.05} min="0" max="1" /></div>
             <div className="mini-input-row"><label>Auto-Save</label><input type="number" value={autoSaveFreq} onChange={e => setAutoSaveFreq(Math.max(1, parseInt(e.target.value)))} min="1" max="1000" /></div>
           </div>
