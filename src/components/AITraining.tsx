@@ -4,10 +4,11 @@ import { createModel } from '../ai/modelBuilder';
 import { Trainer } from '../ai/trainer';
 import type { TrainingConfig } from '../ai/trainer';
 import type { BoardState, Coord, Player } from '../types';
-import { getVaultMetadata, saveModelToVault, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
+import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
 import { encodeState, coordToIndex, decodeMove } from '../ai/encoder';
-import { getMaxLine, rotateBoard, rotateCoord, coordToString } from '../gameLogic';
+import { getMaxLine, rotateBoard, rotateCoord } from '../gameLogic';
+import { coordToString } from '../types'; // Fix: Import from types
 
 interface Props {
   isTraining: boolean;
@@ -43,13 +44,13 @@ export const AITraining: React.FC<Props> = ({
   generations, setGenerations, loss, setLoss,
   currentModelName, setCurrentModelName, trainerRef, modelRef, setIsAiLoaded
 }) => {
-  const [logs, setLog] = useState<string[]>(["[System] Hyper-Batch Engine Ready."]);
+  const [logs, setLog] = useState<string[]>(["[System] Ready for training."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
   const [maxTurns, setMaxTurns] = useState(250);
   const [batchSize, setBatchSize] = useState(64);
-  const [parallelGames, setParallelGames] = useState(16); // High-speed parallel setting
+  const [parallelGames, setParallelGames] = useState(16);
   const [epsilon, setEpsilon] = useState(0.2);
   const [autoSaveFreq, setAutoSaveFreq] = useState(50);
   
@@ -86,21 +87,30 @@ export const AITraining: React.FC<Props> = ({
     const hexInputs = (3 * focalRadii.global * (focalRadii.global + 1) + 1) + 
                       (3 * focalRadii.self * (focalRadii.self + 1) + 1) + 
                       (3 * focalRadii.memory * (focalRadii.memory + 1) + 1) * 4;
-    return { inputNodes: hexInputs + 4 + 12, outputNodes: hexInputs };
+    return {
+      inputNodes: hexInputs + 4 + 12,
+      outputNodes: hexInputs
+    };
   };
 
   const handleCreateNew = () => {
     const { inputNodes, outputNodes } = getIOConfig();
-    const model = createModel({ inputNodes, outputNodes, hiddenLayers: layers, learningRate: 0.001 });
+    const model = createModel({
+      inputNodes,
+      outputNodes,
+      hiddenLayers: layers,
+      learningRate: 0.001
+    });
     initTrainer(model);
-    setGenerations(0); setLoss(0);
-    addLog(`[System] New Dueling Model initialized.`);
+    setGenerations(0);
+    setLoss(0);
+    addLog(`[System] New model initialized.`);
   };
 
   const toggleTraining = async () => {
     if (!isTraining) {
       if (!modelRef.current) handleCreateNew();
-      addLog("[System] Hyper-Batch Training Resumed.");
+      addLog("[System] Training resumed.");
     } else {
       addLog("[System] Training paused.");
     }
@@ -112,18 +122,21 @@ export const AITraining: React.FC<Props> = ({
     try {
       const name = isAuto ? currentModelName : (prompt("Enter model name:", currentModelName) || currentModelName);
       const { inputNodes, outputNodes } = getIOConfig();
+
       const meta: ModelMetadata = {
         name, timestamp: Date.now(), inputNodes, outputNodes, hiddenLayers: layers,
         focalRadii: { ...focalRadii }, generation: genRef.current, maxTurns, batchSize, epsilon
       };
+
       await trainerRef.current.saveModel(`indexeddb://${name}`);
       const vaultData = getVaultMetadata();
       const index = vaultData.findIndex(m => m.name === name);
       if (index !== -1) vaultData[index] = meta; else vaultData.push(meta);
       localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
+
       if (!isAuto) setCurrentModelName(name);
       setVault(getVaultMetadata());
-      addLog(`[System] Model saved ${isAuto ? '(Auto)' : ''}.`);
+      addLog(`[System] Saved '${name}'.`);
     } catch (e: any) {
       if (e.message !== "GPU_BUSY" && !isAuto) addLog("[Error] Save failed.");
     }
@@ -145,7 +158,9 @@ export const AITraining: React.FC<Props> = ({
       if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
       addLog(`[System] Loaded '${name}'.`);
-    } catch (e) { addLog(`[Error] Failed to load.`); }
+    } catch (e) {
+      addLog(`[Error] Failed to load model.`);
+    }
   };
 
   const handleDelete = async (name: string) => {
@@ -157,32 +172,50 @@ export const AITraining: React.FC<Props> = ({
 
   const runChampionship = async () => {
     if (!modelRef.current || vault.length === 0) return;
-    const opponentName = prompt("Enter opponent name:", vault[0].name);
+    const opponentName = prompt("Enter opponent model name:", vault[0].name);
     if (!opponentName) return;
+
     setIsChampionship(true);
+    addLog(`[Champ] Battle: ${currentModelName} vs ${opponentName}`);
+    
     try {
       const opponentModel = await loadModelFromVault(opponentName);
-      let p1Wins = 0; let p2Wins = 0;
+      let p1Wins = 0;
+      let p2Wins = 0;
       const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards: rewards as any };
+
       for (let g = 0; g < 10; g++) {
-        let board: BoardState = new Map(); let currentPlayer: Player = 1; let winner: Player | null = null;
-        let foci: Coord[] = Array(6).fill({ q: 0, r: 0 }); let turns = 0;
+        let board: BoardState = new Map();
+        let currentPlayer: Player = 1;
+        let winner: Player | null = null;
+        let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
         const modelIsP1 = g < 5;
+        let turns = 0;
+
         while (!winner && board.size < maxTurns * 2) {
-          const m = (currentPlayer === 1 && modelIsP1) || (currentPlayer === 2 && !modelIsP1) ? modelRef.current : opponentModel;
+          const m = (currentPlayer === 1 && modelIsP1) || (currentPlayer === 2 && !modelIsP1) 
+            ? modelRef.current : opponentModel;
+          
           const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, config, turns, maxTurns, m);
-          board = result.board; winner = result.winner;
+          board = result.board;
+          winner = result.winner;
           if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
-          currentPlayer = currentPlayer === 1 ? 2 : 1; turns++;
+          currentPlayer = currentPlayer === 1 ? 2 : 1;
+          turns++;
         }
-        if (winner) { if ((winner === 1 && modelIsP1) || (winner === 2 && !modelIsP1)) p1Wins++; else p2Wins++; }
+
+        if (winner) {
+          if ((winner === 1 && modelIsP1) || (winner === 2 && !modelIsP1)) p1Wins++;
+          else p2Wins++;
+        }
         setChampResults({ p1: p1Wins, p2: p2Wins });
       }
-    } catch (e) { addLog("[Error] Champ failed."); }
+    } catch (e) {
+      addLog("[Error] Champ failed.");
+    }
     setIsChampionship(false);
   };
 
-  // HYPER-BATCH TRAINING LOOP
   useEffect(() => {
     let active = true;
     if (!isTraining || !trainerRef.current) return;
@@ -192,7 +225,6 @@ export const AITraining: React.FC<Props> = ({
         const currentLR = Math.max(0.0001, 0.001 * Math.pow(0.99, genRef.current / 100));
         trainerRef.current!.setLearningRate(currentLR);
 
-        // Initialize Parallel Sessions
         const sessions: GameSession[] = Array.from({ length: parallelGames }, () => ({
           board: new Map(),
           currentPlayer: 1,
@@ -207,7 +239,6 @@ export const AITraining: React.FC<Props> = ({
         let activeCount = parallelGames;
 
         while (activeCount > 0 && active && isTraining) {
-          // 1. Gather all states for the current step (Vectorization)
           const statesToPredict: number[][] = [];
           const sessionIndices: number[] = [];
 
@@ -221,18 +252,12 @@ export const AITraining: React.FC<Props> = ({
 
           if (sessionIndices.length === 0) break;
 
-          // 2. Batch Predict (Massive GPU efficiency)
           const batchPredictions = await trainerRef.current!.predictActionBatch(statesToPredict, epsilon);
 
-          // 3. Process Predictions and Update Boards
           for (let i = 0; i < sessionIndices.length; i++) {
             const s = sessions[sessionIndices[i]];
-            const prediction = batchPredictions[i];
-            
-            // Handle move (Sequential logic inside each game)
             const result = await trainerRef.current!.playTurn(s.board, s.currentPlayer, s.foci, focalRadii, { epsilon } as any, s.turns, maxTurns);
             
-            // Record
             result.moves.forEach((move, moveIdx) => {
               const myMax = getMaxLine(s.board, move.q, move.r, s.currentPlayer);
               const other = (s.currentPlayer === 1 ? 2 : 1) as Player;
@@ -251,7 +276,7 @@ export const AITraining: React.FC<Props> = ({
                 player: s.currentPlayer,
                 turn: s.turns,
                 tacticalBonus: tBonus,
-                illegalActions: [] // Simplified for batch speed
+                illegalActions: []
               });
             });
 
@@ -265,7 +290,6 @@ export const AITraining: React.FC<Props> = ({
           }
         }
 
-        // 4. Distribute Rewards and Save to Memory (including augmentation)
         sessions.forEach(s => {
           [1, 2].forEach(p => {
             const pExps = s.history.filter(exp => exp.player === p);
@@ -287,7 +311,6 @@ export const AITraining: React.FC<Props> = ({
           });
         });
 
-        // 5. Train Batch
         const l = await trainerRef.current!.trainBatch(batchSize);
         if (l) setLoss(l);
 
@@ -295,10 +318,9 @@ export const AITraining: React.FC<Props> = ({
         setGenerations(newGen);
         if (newGen % autoSaveFreq < parallelGames) performSave(true);
         
-        if (active && isTraining) setTimeout(runHyperCycle, 10);
+        if (active && isTraining) setTimeout(runHyperCycle, 100);
       } catch (err) {
-        addLog("[Shield] Error detected. Restarting...");
-        if (active && isTraining) setTimeout(runHyperCycle, 2000);
+        if (active && isTraining) setTimeout(runHyperCycle, 3000);
       }
     };
 
@@ -308,13 +330,13 @@ export const AITraining: React.FC<Props> = ({
 
   return (
     <div className="tab-content ai-view">
-      <div className="settings-header"><h2>AI Training Lab (Hyper-Batch v2)</h2></div>
+      <div className="settings-header"><h2>AI Training Lab</h2></div>
       <section className="ai-top-bar card">
         <div className="top-bar-row">
           <div className="input-group-horizontal">
             <div className="mini-input-row"><label>Max Turns</label><input type="number" value={maxTurns} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" /></div>
-            <div className="mini-input-row"><label>Batch Size</label><input type="number" value={batchSize} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} step={32} min="32" max="512" /></div>
-            <div className="mini-input-row"><label>Parallel</label><input type="number" value={parallelGames} onChange={e => setParallelGames(Math.max(1, parseInt(e.target.value)))} step={4} min="1" max="64" /></div>
+            <div className="mini-input-row"><label>Batch Size</label><input type="number" value={batchSize} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} min="32" max="1024" /></div>
+            <div className="mini-input-row"><label>Parallel</label><input type="number" value={parallelGames} onChange={e => setParallelGames(Math.max(1, parseInt(e.target.value)))} min="1" max="64" /></div>
             <div className="mini-input-row"><label>Randomness</label><input type="number" value={epsilon} onChange={e => setEpsilon(parseSafeFloat(e.target.value))} step={0.05} min="0" max="1" /></div>
             <div className="mini-input-row"><label>Auto-Save</label><input type="number" value={autoSaveFreq} onChange={e => setAutoSaveFreq(Math.max(1, parseInt(e.target.value)))} min="1" max="1000" /></div>
           </div>
@@ -326,7 +348,7 @@ export const AITraining: React.FC<Props> = ({
             <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship}>Champ</button>
           </div>
           <div className="stats-section">
-            <div className="stat-pill model-name-pill"><span>Model</span> <strong>{currentModelName}</strong></div>
+            <div className="stat-pill"><span>Model</span> <strong>{currentModelName}</strong></div>
             <div className="stat-pill"><span>Gen</span> <strong>{generations}</strong></div>
             <div className="stat-pill"><span>Loss</span> <strong>{loss.toFixed(4)}</strong></div>
             {champResults && <div className="champ-pill"><span>Score</span> <strong>{champResults.p1}-{champResults.p2}</strong></div>}
@@ -355,8 +377,8 @@ export const AITraining: React.FC<Props> = ({
             <h3>Reward System</h3>
             <div className="reward-grid">
               <div className="input-group"><label>Win P1/P2</label><div className="dual-input"><input type="number" value={rewards.p1Win} onChange={e => setRewards({...rewards, p1Win: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.p2Win} onChange={e => setRewards({...rewards, p2Win: parseSafeFloat(e.target.value)})} /></div></div>
-              <div className="input-group"><label>Lines 3/4/5</label><div className="dual-input"><input type="number" value={rewards.line3} onChange={e => setRewards({...rewards, line3: parseSafeFloat(e.target.value)})} title="3 in a row"/><input type="number" value={rewards.line4} onChange={e => setRewards({...rewards, line4: parseSafeFloat(e.target.value)})} title="4 in a row"/><input type="number" value={rewards.line5} onChange={e => setRewards({...rewards, line5: parseSafeFloat(e.target.value)})} title="5 in a row"/></div></div>
-              <div className="input-group"><label>Blocks 4/5</label><div className="dual-input"><input type="number" value={rewards.block4} onChange={e => setRewards({...rewards, block4: parseSafeFloat(e.target.value)})} title="Block enemy 4"/><input type="number" value={rewards.block5} onChange={e => setRewards({...rewards, block5: parseSafeFloat(e.target.value)})} title="Block enemy 5"/></div></div>
+              <div className="input-group"><label>Lines 3/4/5</label><div className="dual-input"><input type="number" value={rewards.line3} onChange={e => setRewards({...rewards, line3: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.line4} onChange={e => setRewards({...rewards, line4: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.line5} onChange={e => setRewards({...rewards, line5: parseSafeFloat(e.target.value)})} /></div></div>
+              <div className="input-group"><label>Blocks 4/5</label><div className="dual-input"><input type="number" value={rewards.block4} onChange={e => setRewards({...rewards, block4: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.block5} onChange={e => setRewards({...rewards, block5: parseSafeFloat(e.target.value)})} /></div></div>
               <div className="input-group"><label>Illegal Move</label><input type="number" value={rewards.illegal} onChange={e => setRewards({...rewards, illegal: parseSafeFloat(e.target.value)})} /></div>
               <div className="input-group"><label>Eff.</label><input type="number" value={rewards.efficiency} onChange={e => setRewards({...rewards, efficiency: parseSafeFloat(e.target.value)})} /></div>
             </div>
