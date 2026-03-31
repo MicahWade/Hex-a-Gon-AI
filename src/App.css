@@ -859,6 +859,19 @@ button:hover {
   text-align: center;
 }
 
+.active-ai-indicator.no-model {
+  background: rgba(231, 76, 60, 0.1);
+  color: #e74c3c;
+  border-color: rgba(231, 76, 60, 0.3);
+}
+
+.stopping-btn {
+  background-color: #f39c12 !important;
+  color: white !important;
+  cursor: wait !important;
+  opacity: 0.8;
+}
+
 .active-ai-indicator strong {
   color: white;
   margin-left: 5px;

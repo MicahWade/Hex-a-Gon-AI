@@ -42,6 +42,7 @@ export const AITraining: React.FC<Props> = ({
   const [parallelGames, setParallelGames] = useState(4);
   const [epsilon, setEpsilon] = useState(0.2);
   const [autoSaveFreq, setAutoSaveFreq] = useState(50);
+  const [isStopping, setIsStopping] = useState(false);
   
   const [rewards, setRewards] = useState({
     p1Win: 4.0, p2Win: 5.0, p1Draw: 0.4, p2Draw: 0.6,
@@ -91,10 +92,12 @@ export const AITraining: React.FC<Props> = ({
     if (!isTraining) {
       if (!modelRef.current) handleCreateNew();
       addLog("[System] Training resumed.");
+      setIsTraining(true);
     } else {
-      addLog("[System] Training paused.");
+      addLog("[System] Training stopping...");
+      setIsStopping(true);
+      setIsTraining(false);
     }
-    setIsTraining(!isTraining);
   };
 
   const performSave = async (isAuto = false) => {
@@ -289,9 +292,18 @@ export const AITraining: React.FC<Props> = ({
         const nextGen = genRef.current + results.length;
         setGenerations(nextGen);
         if (nextGen % autoSaveFreq < results.length) performSave(true);
-        if (active && isTraining) setTimeout(runCycle, 50);
+        if (active && isTraining) {
+          setTimeout(runCycle, 50);
+        } else {
+          setIsStopping(false);
+          addLog("[System] Training paused.");
+        }
       } catch (err) {
-        if (active && isTraining) setTimeout(runCycle, 2000);
+        if (active && isTraining) {
+          setTimeout(runCycle, 2000);
+        } else {
+          setIsStopping(false);
+        }
       }
     };
 
@@ -314,8 +326,14 @@ export const AITraining: React.FC<Props> = ({
         </div>
         <div className="top-bar-row" style={{marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px'}}>
           <div className="action-buttons">
-            <button className={isTraining ? 'stop-btn' : 'start-btn'} onClick={toggleTraining}>{isTraining ? 'Stop' : 'Start Training'}</button>
-            <button className="reset-btn" onClick={() => performSave(false)}>Save</button>
+            <button 
+              className={isStopping ? 'stopping-btn' : (isTraining ? 'stop-btn' : 'start-btn')} 
+              onClick={toggleTraining}
+              disabled={isStopping}
+            >
+              {isStopping ? 'Stopping...' : (isTraining ? 'Stop' : 'Start Training')}
+            </button>
+            <button className="reset-btn" onClick={() => performSave(false)} disabled={isTraining || isStopping}>Save</button>
             <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship}>Champ</button>
           </div>
           <div className="stats-section">

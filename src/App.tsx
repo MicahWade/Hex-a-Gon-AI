@@ -206,7 +206,7 @@ function App() {
           <div className="ui-overlay">
             <h1>Hex-A-Gon</h1>
             {gameMode === 'pvai' && (
-              <div className="active-ai-indicator">
+              <div className={`active-ai-indicator ${!isAiLoaded ? 'no-model' : ''}`}>
                 🤖 AI: <strong>{activeModelName}</strong>
                 {!isAiLoaded && <p style={{color: '#e74c3c', fontSize: '10px', marginTop: '5px'}}>No model loaded. Go to AI tab to init/load.</p>}
               </div>
