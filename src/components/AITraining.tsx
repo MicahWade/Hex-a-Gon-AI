@@ -7,7 +7,8 @@ import type { BoardState, Coord, Player } from '../types';
 import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
 import { encodeState, coordToIndex, decodeMove } from '../ai/encoder';
-import { getMaxLine, rotateBoard, rotateCoord, coordToString } from '../gameLogic';
+import { getMaxLine, rotateBoard, rotateCoord } from '../gameLogic';
+import { coordToString } from '../types';
 
 interface Props {
   isTraining: boolean;
