@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as tf from '@tensorflow/tfjs';
 import { createModel } from '../ai/modelBuilder';
 import { Trainer } from '../ai/trainer';
@@ -7,8 +7,7 @@ import type { BoardState, Coord, Player } from '../types';
 import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
 import { encodeState, coordToIndex, decodeMove } from '../ai/encoder';
-import { getMaxLine, rotateBoard, rotateCoord } from '../gameLogic';
-import { coordToString } from '../types';
+import { getMaxLine, rotateBoard, rotateCoord, coordToString } from '../gameLogic';
 
 interface Props {
   isTraining: boolean;
@@ -33,7 +32,7 @@ export const AITraining: React.FC<Props> = ({
   generations, setGenerations, loss, setLoss,
   currentModelName, setCurrentModelName, trainerRef, modelRef, setIsAiLoaded
 }) => {
-  const [logs, setLog] = useState<string[]>(["[System] AI Training Lab Ready."]);
+  const [logs, setLog] = useState<string[]>(["[System] Performance engine active."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
@@ -51,10 +50,17 @@ export const AITraining: React.FC<Props> = ({
   });
 
   const genRef = useRef(generations);
-  useEffect(() => { setVault(getVaultMetadata()); }, []);
-  useEffect(() => { genRef.current = generations; }, [generations]);
+  const lastUiUpdate = useRef(0);
+  const pendingGen = useRef(generations);
+  const pendingLoss = useRef(loss);
 
-  const addLog = (msg: string) => { setLog(prev => [msg, ...prev].slice(0, 50)); };
+  useEffect(() => { setVault(getVaultMetadata()); }, []);
+  useEffect(() => { 
+    genRef.current = generations;
+    pendingGen.current = generations;
+  }, [generations]);
+
+  const addLog = (msg: string) => { setLog(prev => [msg, ...prev].slice(0, 30)); };
   const parseSafeFloat = (val: string): number => {
     const parsed = parseFloat(val);
     return isNaN(parsed) ? 0 : parsed;
@@ -116,7 +122,7 @@ export const AITraining: React.FC<Props> = ({
       localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
       if (!isAuto) setCurrentModelName(name);
       setVault(getVaultMetadata());
-      addLog(`[System] Model saved.`);
+      if (!isAuto) addLog(`[System] Saved '${name}'.`);
     } catch (e: any) {
       if (e.message !== "GPU_BUSY" && !isAuto) addLog("[Error] Save failed.");
     }
@@ -202,10 +208,10 @@ export const AITraining: React.FC<Props> = ({
         
         const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: currentEpsilon }, turns, maxTurns);
         
-        // Find illegal attempts (choices the AI ranked high but were taken)
+        // Find illegal attempts
         const illegalActions: number[] = [];
         if (currentPlayer !== randomPlayerId && board.size > 0) {
-          const topOptions = await trainerRef.current!.getTopMoves(encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns), 5);
+          const topOptions = await trainerRef.current!.getTopMoves(encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns), 3);
           topOptions.forEach(opt => {
             if (board.has(coordToString(decodeMove(opt.idx, foci, focalRadii)))) {
               illegalActions.push(opt.idx);
@@ -288,28 +294,52 @@ export const AITraining: React.FC<Props> = ({
         const games = Array.from({ length: parallelGames }, () => runSingleGame());
         const results = await Promise.all(games);
         const l = await trainerRef.current!.trainBatch(batchSize);
-        if (l) setLoss(l);
-        const nextGen = genRef.current + results.length;
-        setGenerations(nextGen);
-        if (nextGen % autoSaveFreq < results.length) performSave(true);
+        
+        // PERFORMANCE: Batch state updates
+        pendingGen.current += results.length;
+        if (l) pendingLoss.current = l;
+
+        const now = Date.now();
+        if (now - lastUiUpdate.current > 500) {
+          setGenerations(pendingGen.current);
+          setLoss(pendingLoss.current);
+          lastUiUpdate.current = now;
+        }
+
+        if (pendingGen.current % autoSaveFreq < results.length) performSave(true);
+
         if (active && isTraining) {
-          setTimeout(runCycle, 50);
+          setTimeout(runCycle, 10);
         } else {
           setIsStopping(false);
           addLog("[System] Training paused.");
         }
       } catch (err) {
-        if (active && isTraining) {
-          setTimeout(runCycle, 2000);
-        } else {
-          setIsStopping(false);
-        }
+        if (active && isTraining) setTimeout(runCycle, 2000);
+        else setIsStopping(false);
       }
     };
 
     runCycle();
     return () => { active = false; };
   }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, parallelGames]);
+
+  // Memoize static panels to prevent unnecessary re-renders
+  const vaultPanel = useMemo(() => (
+    <section className="model-vault card full-height-card">
+      <h3>Model Vault</h3>
+      <div className="vault-list">
+        {vault.length === 0 && <p className="no-moves">No saved models.</p>}
+        {vault.map(m => (
+          <div key={m.name} className="vault-item">
+            <div className="vault-info"><strong>{m.name}</strong><span>{new Date(m.timestamp).toLocaleDateString()} • Gen {m.generation}</span></div>
+            <div className="vault-actions"><button onClick={() => handleLoad(m.name)}>Load</button><button className="delete-btn" onClick={() => handleDelete(m.name)}>&times;</button></div>
+          </div>
+        ))}
+      </div>
+      <button className="add-layer-btn" style={{marginTop: 'auto'}} onClick={handleCreateNew}>Initialize New Model</button>
+    </section>
+  ), [vault, currentModelName]);
 
   return (
     <div className="tab-content ai-view">
@@ -326,11 +356,7 @@ export const AITraining: React.FC<Props> = ({
         </div>
         <div className="top-bar-row" style={{marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px'}}>
           <div className="action-buttons">
-            <button 
-              className={isStopping ? 'stopping-btn' : (isTraining ? 'stop-btn' : 'start-btn')} 
-              onClick={toggleTraining}
-              disabled={isStopping}
-            >
+            <button className={isStopping ? 'stopping-btn' : (isTraining ? 'stop-btn' : 'start-btn')} onClick={toggleTraining} disabled={isStopping}>
               {isStopping ? 'Stopping...' : (isTraining ? 'Stop' : 'Start Training')}
             </button>
             <button className="reset-btn" onClick={() => performSave(false)} disabled={isTraining || isStopping}>Save</button>
@@ -346,21 +372,7 @@ export const AITraining: React.FC<Props> = ({
       </section>
       
       <div className="ai-grid">
-        <div className="ai-main-col">
-          <section className="model-vault card full-height-card">
-            <h3>Model Vault</h3>
-            <div className="vault-list">
-              {vault.length === 0 && <p className="no-moves">No saved models.</p>}
-              {vault.map(m => (
-                <div key={m.name} className="vault-item">
-                  <div className="vault-info"><strong>{m.name}</strong><span>{new Date(m.timestamp).toLocaleDateString()} • Gen {m.generation}</span></div>
-                  <div className="vault-actions"><button onClick={() => handleLoad(m.name)}>Load</button><button className="delete-btn" onClick={() => handleDelete(m.name)}>&times;</button></div>
-                </div>
-              ))}
-            </div>
-            <button className="add-layer-btn" style={{marginTop: 'auto'}} onClick={handleCreateNew}>Initialize New Model</button>
-          </section>
-        </div>
+        <div className="ai-main-col">{vaultPanel}</div>
         <div className="ai-side-col">
           <section className="reward-config card full-height-card">
             <h3>Reward System</h3>
