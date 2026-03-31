@@ -6,7 +6,7 @@ import type { TrainingConfig } from '../ai/trainer';
 import type { BoardState, Coord, Player } from '../types';
 import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
-import { encodeState, coordToIndex } from '../ai/encoder';
+import { encodeState, coordToIndex, decodeMove } from '../ai/encoder';
 import { getMaxLine, rotateBoard, rotateCoord } from '../gameLogic';
 
 interface Props {
@@ -43,7 +43,8 @@ export const AITraining: React.FC<Props> = ({
   
   const [rewards, setRewards] = useState({
     p1Win: 4.0, p2Win: 5.0, p1Draw: 0.4, p2Draw: 0.6,
-    line3: 0.05, line4: 0.15, line5: 0.50, block4: 0.20, block5: 0.50, efficiency: -0.005
+    line3: 0.05, line4: 0.15, line5: 0.50, block4: 0.20, block5: 0.50, 
+    efficiency: -0.005, illegal: -0.50
   });
 
   const genRef = useRef(generations);
@@ -165,7 +166,7 @@ export const AITraining: React.FC<Props> = ({
         return;
       }
       let p1Wins = 0; let p2Wins = 0;
-      const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards };
+      const config: TrainingConfig = { learningRate: 0.001, batchSize: 64, gamma: 0.95, epsilon: 0, rewards: { ...rewards, threat: 0 } as any };
       for (let g = 0; g < 10; g++) {
         let board: BoardState = new Map();
         let currentPlayer: Player = 1;
@@ -192,28 +193,40 @@ export const AITraining: React.FC<Props> = ({
     if (!isTraining || !trainerRef.current) return;
 
     const runSingleGame = async () => {
-      const config: TrainingConfig = { learningRate: 0.001, batchSize, gamma: 0.95, epsilon, rewards };
+      const currentLR = Math.max(0.0001, 0.001 * Math.pow(0.99, genRef.current / 100));
+      trainerRef.current!.setLearningRate(currentLR);
+      const config: TrainingConfig = { learningRate: currentLR, batchSize, gamma: 0.95, epsilon, rewards: rewards as any };
+      
       let board: BoardState = new Map();
       let currentPlayer: Player = 1;
       let winner: Player | null = null;
       let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
       let turns = 0;
-      const gameHistory: { boardBefore: BoardState, foci: Coord[], move: Coord, player: Player, turn: number, tacticalBonus: number }[] = [];
+      
+      const gameHistory: { boardBefore: BoardState, foci: Coord[], move: Coord, player: Player, turn: number, tacticalBonus: number, illegalActions: number[] }[] = [];
 
-      // 20% Chance to play against a Random Bot instead of self
       const isRandomOpponent = Math.random() < 0.2;
       const randomPlayerId = isRandomOpponent ? (Math.random() > 0.5 ? 1 : 2) : 0;
 
       while (!winner && turns < maxTurns && active && isTraining) {
         const boardBefore = new Map(board);
         const currentFoci = [...foci];
-        
-        // Use epsilon=1.0 for the random player if it's their turn
         const currentEpsilon = (currentPlayer === randomPlayerId) ? 1.0 : epsilon;
         
         const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: currentEpsilon }, turns, maxTurns);
         
-        result.moves.forEach((move) => {
+        // Find illegal attempts (choices the AI ranked high but were taken)
+        const illegalActions: number[] = [];
+        if (currentPlayer !== randomPlayerId && !isFirstMove(board)) {
+          const topOptions = await trainerRef.current!.getTopMoves(encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns), 5);
+          topOptions.forEach(opt => {
+            if (board.has(coordToString(decodeMove(opt.idx, foci, focalRadii)))) {
+              illegalActions.push(opt.idx);
+            }
+          });
+        }
+
+        result.moves.forEach((move, i) => {
           let tBonus = 0;
           const myMax = getMaxLine(board, move.q, move.r, currentPlayer);
           const otherPlayer = (currentPlayer === 1 ? 2 : 1) as Player;
@@ -231,7 +244,8 @@ export const AITraining: React.FC<Props> = ({
             move: move,
             player: currentPlayer, 
             turn: turns, 
-            tacticalBonus: tBonus 
+            tacticalBonus: tBonus,
+            illegalActions: i === 0 ? illegalActions : [] 
           });
         });
 
@@ -242,7 +256,6 @@ export const AITraining: React.FC<Props> = ({
         turns++;
       }
 
-      // Distribute rewards and save to memory with Data Augmentation
       const playerResults = [1, 2].map(p => {
         const pExps = gameHistory.filter(exp => exp.player === p);
         const base = winner ? (winner === p ? (p === 1 ? rewards.p1Win : rewards.p2Win) : -1.0) : (p === 1 ? rewards.p1Draw : rewards.p2Draw);
@@ -260,26 +273,28 @@ export const AITraining: React.FC<Props> = ({
 
       playerResults.forEach(res => {
         res.experiences.forEach(exp => {
-          const priority = Math.abs(res.total) + 0.1; // Higher absolute reward = higher priority
+          const priority = Math.abs(res.total) + 0.1;
           
-          // 0-Degree (Original)
-          const action0 = coordToIndex(exp.move, exp.foci, focalRadii);
-          if (action0 !== -1) {
-            const state0 = encodeState(exp.boardBefore, exp.player, exp.foci, focalRadii, exp.turn, maxTurns);
-            trainerRef.current?.addToMemory(state0, action0, res.total, null, priority);
-          }
-
-          // Data Augmentation: 60, 120, 180, 240, 300 Degrees
-          for (let r = 1; r < 6; r++) {
+          // Original and Rotated versions of the move
+          for (let r = 0; r < 6; r++) {
             const rotBoard = rotateBoard(exp.boardBefore, r);
             const rotFoci = exp.foci.map(f => rotateCoord(f, r));
             const rotMove = rotateCoord(exp.move, r);
             const rotAction = coordToIndex(rotMove, rotFoci, focalRadii);
-            
             if (rotAction !== -1) {
               const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
               trainerRef.current?.addToMemory(rotState, rotAction, res.total, null, priority);
             }
+
+            // Also penalize illegal attempts found in this turn
+            exp.illegalActions.forEach(actionIdx => {
+              const rotIllegalMove = rotateCoord(decodeMove(actionIdx, exp.foci, focalRadii), r);
+              const rotIllegalAction = coordToIndex(rotIllegalMove, rotFoci, focalRadii);
+              if (rotIllegalAction !== -1) {
+                const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
+                trainerRef.current?.addToMemory(rotState, rotIllegalAction, rewards.illegal, null, priority);
+              }
+            });
           }
         });
       });
@@ -287,30 +302,20 @@ export const AITraining: React.FC<Props> = ({
       return { winner, turns, isRandomOpponent };
     };
 
+    const isFirstMove = (b: BoardState) => b.size === 0;
+
     const runParallelCycle = async () => {
       try {
-        // Dynamic Learning Rate: Decreases slowly as generations increase
-        const currentLR = Math.max(0.0001, 0.001 * Math.pow(0.99, generations / 100));
-        trainerRef.current!.setLearningRate(currentLR);
-
-        // Run 4 games in parallel
         const games = [1, 2, 3, 4].map(() => runSingleGame());
         const results = await Promise.all(games);
-
-        
-        // Train on the new data
         const l = await trainerRef.current!.trainBatch(batchSize);
         if (l) setLoss(l);
-
         const nextGen = genRef.current + results.length;
         setGenerations(nextGen);
-        
         if (nextGen % autoSaveFreq < results.length) performSave(true);
-
         results.forEach(res => {
           if (res.winner) addLog(`[Game] P${res.winner} won in ${res.turns} turns ${res.isRandomOpponent ? '(vs Random)' : ''}.`);
         });
-
         if (active && isTraining) setTimeout(runParallelCycle, 50);
       } catch (err) {
         addLog(`[Stability] Error. Restarting...`);
@@ -372,6 +377,7 @@ export const AITraining: React.FC<Props> = ({
               <div className="input-group"><label>Win P1/P2</label><div className="dual-input"><input type="number" value={rewards.p1Win} onChange={e => setRewards({...rewards, p1Win: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.p2Win} onChange={e => setRewards({...rewards, p2Win: parseSafeFloat(e.target.value)})} /></div></div>
               <div className="input-group"><label>Lines 3/4/5</label><div className="dual-input"><input type="number" value={rewards.line3} onChange={e => setRewards({...rewards, line3: parseSafeFloat(e.target.value)})} title="3 in a row"/><input type="number" value={rewards.line4} onChange={e => setRewards({...rewards, line4: parseSafeFloat(e.target.value)})} title="4 in a row"/><input type="number" value={rewards.line5} onChange={e => setRewards({...rewards, line5: parseSafeFloat(e.target.value)})} title="5 in a row"/></div></div>
               <div className="input-group"><label>Blocks 4/5</label><div className="dual-input"><input type="number" value={rewards.block4} onChange={e => setRewards({...rewards, block4: parseSafeFloat(e.target.value)})} title="Block enemy 4"/><input type="number" value={rewards.block5} onChange={e => setRewards({...rewards, block5: parseSafeFloat(e.target.value)})} title="Block enemy 5"/></div></div>
+              <div className="input-group"><label>Illegal Move</label><input type="number" value={rewards.illegal} onChange={e => setRewards({...rewards, illegal: parseSafeFloat(e.target.value)})} /></div>
               <div className="input-group"><label>Eff.</label><input type="number" value={rewards.efficiency} onChange={e => setRewards({...rewards, efficiency: parseSafeFloat(e.target.value)})} /></div>
             </div>
           </section>
