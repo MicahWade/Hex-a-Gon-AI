@@ -36,7 +36,6 @@ interface Props {
   setParallelGames: (val: number) => void;
 }
 
-// ADAPTIVE EPSILON CONFIG
 const EPSILON_BUCKETS = [0.05, 0.15, 0.35, 0.65];
 const BUCKET_LABELS = ['Conservative', 'Standard', 'Aggressive', 'Chaos'];
 
@@ -46,7 +45,7 @@ export const AITraining: React.FC<Props> = ({
   currentModelName, setCurrentModelName, trainerRef, modelRef, setIsAiLoaded,
   maxTurns, setMaxTurns, batchSize, setBatchSize, epsilon, setEpsilon, parallelGames, setParallelGames
 }) => {
-  const [logs, setLog] = useState<string[]>(["[System] Adaptive engine active."]);
+  const [logs, setLog] = useState<string[]>(["[System] Safety-shield active."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
@@ -54,15 +53,10 @@ export const AITraining: React.FC<Props> = ({
   const [isStopping, setIsStopping] = useState(false);
   const [saveNameInput, setSaveNameInput] = useState(currentModelName);
   
-  // Adaptive State
-  const [bucketStats, setBucketStats] = useState<number[]>([1, 1, 1, 1]); // Wins per bucket
+  // FIXED: Stats are now refs to prevent Effect re-triggers (The cause of the freeze)
+  const bucketStatsRef = useRef<number[]>([1, 1, 1, 1]);
+  const [visibleBucketStats, setVisibleBucketStats] = useState<number[]>([1, 1, 1, 1]);
   const bucketHistory = useRef<{ bucketIdx: number, win: boolean }[]>([]);
-
-  const [rewards, setRewards] = useState({
-    p1Win: 4.0, p2Win: 5.0, p1Draw: 0.4, p2Draw: 0.6,
-    line3: 0.05, line4: 0.15, line5: 0.50, block4: 0.20, block5: 0.50, 
-    efficiency: -0.005, illegal: -0.05
-  });
 
   const genRef = useRef(generations);
   const lastUiUpdate = useRef(0);
@@ -223,13 +217,12 @@ export const AITraining: React.FC<Props> = ({
       const currentLR = Math.max(0.0001, 0.001 * Math.pow(0.99, genRef.current / 100));
       trainerRef.current!.setLearningRate(currentLR);
       
-      // ADAPTIVE EPSILON SELECTION
-      // Based on win stats of last 1000 games
-      const totalWeight = bucketStats.reduce((a, b) => a + b, 0);
+      const stats = bucketStatsRef.current;
+      const totalWeight = stats.reduce((a, b) => a + b, 0);
       let r = Math.random() * totalWeight;
       let bucketIdx = 0;
-      for (let i = 0; i < bucketStats.length; i++) {
-        r -= bucketStats[i];
+      for (let i = 0; i < stats.length; i++) {
+        r -= stats[i];
         if (r <= 0) { bucketIdx = i; break; }
       }
       const chosenEpsilon = EPSILON_BUCKETS[bucketIdx];
@@ -248,7 +241,7 @@ export const AITraining: React.FC<Props> = ({
       const botPlayerId = botType !== 'NONE' ? (Math.random() > 0.5 ? 1 : 2) : 0;
 
       while (!winner && turns < maxTurns && active && isTraining) {
-        if (turns % 15 === 0) await tf.nextFrame();
+        if (turns % 20 === 0) await tf.nextFrame();
         const boardBefore = new Map(board);
         const currentFoci = [...foci];
         let result: { board: BoardState; moves: Coord[]; winner: Player | null; actionIndices: number[] };
@@ -306,14 +299,13 @@ export const AITraining: React.FC<Props> = ({
         const loseIdx = playerResults.findIndex(r => r.player !== winner);
         if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
         
-        // RECORD ADAPTIVE STATS
         const isBotWinner = winner === botPlayerId;
-        bucketHistory.current.push({ bucketIdx, win: !isBotWinner }); // Win for the model
+        bucketHistory.current.push({ bucketIdx, win: !isBotWinner });
         if (bucketHistory.current.length > 1000) bucketHistory.current.shift();
         
-        const newStats = [1, 1, 1, 1]; // Reset with laplace smoothing
+        const newStats = [1, 1, 1, 1];
         bucketHistory.current.forEach(h => { if (h.win) newStats[h.bucketIdx]++; });
-        setBucketStats(newStats);
+        bucketStatsRef.current = newStats;
       }
 
       if (workerRef.current) {
@@ -330,6 +322,7 @@ export const AITraining: React.FC<Props> = ({
 
     const runCycle = async () => {
       try {
+        if (!active || !isTraining) return;
         const games = Array.from({ length: parallelGames }, () => runSingleGame());
         const results = await Promise.all(games);
         const l = await trainerRef.current!.trainBatch(batchSize);
@@ -337,23 +330,32 @@ export const AITraining: React.FC<Props> = ({
         results.forEach(res => {
           if (res.winner) {
             const opponentStr = res.botType === 'NONE' ? 'Self' : (res.botType === 'RANDOM' ? 'Random' : 'Tactical');
-            addLog(`[Game] P${res.winner} won (${opponentStr}) • Epsilon: ${EPSILON_BUCKETS[res.bucketIdx]}`);
+            addLog(`[Game] P${res.winner} won (${opponentStr}) • Eps: ${EPSILON_BUCKETS[res.bucketIdx]}`);
           }
         });
 
         pendingGen.current += results.length;
         if (l) pendingLoss.current = l;
         const now = Date.now();
-        if (now - lastUiUpdate.current > 500) { setGenerations(pendingGen.current); setLoss(pendingLoss.current); lastUiUpdate.current = now; }
+        if (now - lastUiUpdate.current > 500) { 
+          setGenerations(pendingGen.current); 
+          setLoss(pendingLoss.current); 
+          setVisibleBucketStats([...bucketStatsRef.current]);
+          lastUiUpdate.current = now; 
+        }
         if (pendingGen.current % autoSaveFreq < results.length) performSave(true);
-        if (active && isTraining) { await new Promise(r => setTimeout(r, 10)); runCycle(); }
-        else { setIsStopping(false); addLog("[System] Training paused."); }
+        
+        if (active && isTraining) { 
+          await tf.nextFrame();
+          setTimeout(runCycle, 50); 
+        } else { setIsStopping(false); addLog("[System] Training paused."); }
       } catch (err) { if (active && isTraining) setTimeout(runCycle, 2000); else setIsStopping(false); }
     };
 
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, parallelGames, bucketStats]);
+    // bucketStats removed from deps to prevent infinite restart loop
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, parallelGames]);
 
   const vaultPanel = useMemo(() => (
     <section className="model-vault card full-height-card">
@@ -401,7 +403,6 @@ export const AITraining: React.FC<Props> = ({
           </div>
         </div>
       </section>
-      
       <div className="ai-grid">
         <div className="ai-main-col">{vaultPanel}</div>
         <div className="ai-side-col">
@@ -413,12 +414,11 @@ export const AITraining: React.FC<Props> = ({
                   <div style={{fontSize: '10px', color: 'rgba(255,255,255,0.5)'}}>{BUCKET_LABELS[i]}</div>
                   <div style={{fontSize: '14px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between'}}>
                     <span>{val}</span>
-                    <span style={{color: '#2ecc71'}}>{Math.round((bucketStats[i] / bucketStats.reduce((a,b)=>a+b,0)) * 100)}%</span>
+                    <span style={{color: '#2ecc71'}}>{Math.round((visibleBucketStats[i] / visibleBucketStats.reduce((a,b)=>a+b,0)) * 100)}%</span>
                   </div>
                 </div>
               ))}
             </div>
-
             <h3>Reward System</h3>
             <div className="reward-grid">
               <div className="input-group"><label>Win P1/P2</label><div className="dual-input"><input type="number" value={rewards.p1Win} onChange={e => setRewards({...rewards, p1Win: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.p2Win} onChange={e => setRewards({...rewards, p2Win: parseSafeFloat(e.target.value)})} /></div></div>
