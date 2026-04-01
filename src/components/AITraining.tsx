@@ -279,30 +279,37 @@ export const AITraining: React.FC<Props> = ({
         if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
       }
 
-      // Process rewards and augmentation
-      playerResults.forEach(res => {
-        res.experiences.forEach(exp => {
+      // Process rewards and augmentation asynchronously to prevent UI freezing
+      for (const res of playerResults) {
+        for (const exp of res.experiences) {
           const priority = Math.abs(res.total) + 0.1;
+          
+          // Yield to UI for every experience processed
+          await new Promise(r => setTimeout(r, 0));
+
           for (let r = 0; r < 6; r++) {
             const rotBoard = rotateBoard(exp.boardBefore, r);
             const rotFoci = exp.foci.map(f => rotateCoord(f, r));
             const rotMove = rotateCoord(exp.move, r);
             const rotAction = coordToIndex(rotMove, rotFoci, focalRadii);
+            
             if (rotAction !== -1) {
               const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
               trainerRef.current?.addToMemory(rotState, rotAction, res.total, null, priority);
             }
-            exp.illegalActions.forEach(actionIdx => {
+
+            // Also penalize illegal attempts found in this turn
+            for (const actionIdx of exp.illegalActions) {
               const rotIllegalMove = rotateCoord(decodeMove(actionIdx, exp.foci, focalRadii), r);
               const rotIllegalAction = coordToIndex(rotIllegalMove, rotFoci, focalRadii);
               if (rotIllegalAction !== -1) {
                 const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
                 trainerRef.current?.addToMemory(rotState, rotIllegalAction, rewards.illegal, null, priority);
               }
-            });
+            }
           }
-        });
-      });
+        }
+      }
 
       return { winner, turns, isRandomOpponent };
     };
