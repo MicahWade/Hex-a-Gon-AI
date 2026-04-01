@@ -7,7 +7,7 @@ import type { BoardState, Coord, Player } from '../types';
 import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
 import { encodeState, coordToIndex, decodeMove } from '../ai/encoder';
-import { getMaxLine, rotateBoard, rotateCoord, getTacticalMove } from '../gameLogic';
+import { getMaxLine, rotateBoard, rotateCoord, getTacticalMove, checkWin } from '../gameLogic';
 import { coordToString } from '../types';
 
 interface Props {

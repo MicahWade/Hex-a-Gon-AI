@@ -1,7 +1,42 @@
 import { coordToString } from './types';
-import type { Coord, Player, BoardState } from './types';
+import type { Coord, Player, BoardState, NotationType } from './types';
+
+// Axial coordinates system (flat topped hexagons)
+// q: column, r: row
+// x = size * (3/2 * q)
+// y = size * (sqrt(3)/2 * q + sqrt(3) * r)
 
 export const SQRT3 = Math.sqrt(3);
+
+export function hexToPixel(q: number, r: number, size: number): { x: number; y: number } {
+  const x = size * (3 / 2 * q);
+  const y = size * (SQRT3 / 2 * q + SQRT3 * r);
+  return { x, y };
+}
+
+export function pixelToHex(x: number, y: number, size: number): Coord {
+  const q = (2 / 3 * x) / size;
+  const r = (-1 / 3 * x + SQRT3 / 3 * y) / size;
+  return axialRound(q, r);
+}
+
+function axialRound(q: number, r: number): Coord {
+  let currQ = Math.round(q);
+  let currR = Math.round(r);
+  let currS = Math.round(-q - r);
+
+  const qDiff = Math.abs(currQ - q);
+  const rDiff = Math.abs(currR - r);
+  const sDiff = Math.abs(currS - (-q - r));
+
+  if (qDiff > rDiff && qDiff > sDiff) {
+    currQ = -currR - currS;
+  } else if (rDiff > sDiff) {
+    currR = -currQ - currS;
+  }
+  
+  return { q: currQ, r: currR };
+}
 
 export function checkWin(board: BoardState, q: number, r: number, player: Player): boolean {
   return getMaxLine(board, q, r, player) >= 6;
@@ -32,10 +67,7 @@ export function getMaxLine(board: BoardState, q: number, r: number, player: Play
 
 export function getTacticalMove(board: BoardState, player: Player, blockChance: number = 0.5): Coord {
   const opponent = (player === 1 ? 2 : 1) as Player;
-  const validMoves: Coord[] = [];
   
-  // Scoping: Find all empty hexes adjacent to existing pieces or within a reasonable range (0,0)
-  // For simplicity and speed, we'll scan a window around active pieces
   const coords = Array.from(board.keys()).map(k => {
     const [q, r] = k.split(',').map(Number);
     return { q, r };
@@ -56,23 +88,14 @@ export function getTacticalMove(board: BoardState, player: Player, blockChance: 
         const myMax = getMaxLine(board, q, r, player);
         const enemyMax = getMaxLine(board, q, r, opponent);
 
-        // Priority 1: Win immediately
         if (myMax >= 6) score += 1000;
-        
-        // Priority 2: Block enemy win (if chance passes)
         if (enemyMax >= 5 && Math.random() < blockChance) score += 500;
-
-        // Priority 3: Build lines
         if (myMax === 5) score += 100;
         if (myMax === 4) score += 50;
         if (myMax === 3) score += 10;
-
-        // Priority 4: Block enemy growth
         if (enemyMax === 4 && Math.random() < blockChance) score += 40;
 
-        // Add some noise
         score += Math.random() * 2;
-
         candidates.push({ coord: c, score });
       }
     }
@@ -103,4 +126,19 @@ export function rotateBoard(board: BoardState, times: number): BoardState {
     newBoard.set(coordToString(rotated), player);
   });
   return newBoard;
+}
+
+export function getNotation(coord: Coord, type: NotationType): string {
+  if (type === 'axial') {
+    return `${coord.q},${coord.r}`;
+  }
+  // Ring notation: ring-index (e.g., 2-5)
+  const ring = Math.max(Math.abs(coord.q), Math.abs(coord.r), Math.abs(-coord.q - coord.r));
+  if (ring === 0) return "0-0";
+  
+  // Find index within ring (simplified)
+  let index = 0;
+  // This is a rough estimation for UI purposes
+  index = Math.atan2(coord.r, coord.q) * (3 * ring / Math.PI);
+  return `${ring}-${Math.abs(Math.round(index))}`;
 }
