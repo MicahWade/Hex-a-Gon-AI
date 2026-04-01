@@ -93,7 +93,7 @@ function App() {
           if (meta.maxTurns !== undefined) setMaxTurns(meta.maxTurns);
           if (meta.batchSize !== undefined) setBatchSize(meta.batchSize);
           if (meta.epsilon !== undefined) setEpsilon(meta.epsilon);
-          // parallelGames isn't in meta yet, but we'll keep it as is or add it later
+          if (meta.parallelGames !== undefined) setParallelGames(meta.parallelGames);
         }
       } catch (e) {
         console.log("No model to auto-load on boot.");

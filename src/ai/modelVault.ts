@@ -11,6 +11,7 @@ export interface ModelMetadata {
   maxTurns: number;
   batchSize: number;
   epsilon: number;
+  parallelGames?: number;
 }
 
 const METADATA_KEY = 'hexagon-model-vault-metadata';

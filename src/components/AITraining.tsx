@@ -124,7 +124,8 @@ export const AITraining: React.FC<Props> = ({
       const { inputNodes, outputNodes } = getIOConfig();
       const meta: ModelMetadata = {
         name, timestamp: Date.now(), inputNodes, outputNodes, hiddenLayers: layers,
-        focalRadii: { ...focalRadii }, generation: genRef.current, maxTurns, batchSize, epsilon
+        focalRadii: { ...focalRadii }, generation: genRef.current, maxTurns, batchSize, epsilon,
+        parallelGames: parallelGames
       };
       await trainerRef.current.saveModel(`indexeddb://${name}`);
       const vaultData = getVaultMetadata();
@@ -153,6 +154,7 @@ export const AITraining: React.FC<Props> = ({
         if (meta.maxTurns !== undefined) setMaxTurns(meta.maxTurns);
         if (meta.batchSize !== undefined) setBatchSize(meta.batchSize);
         if (meta.epsilon !== undefined) setEpsilon(meta.epsilon);
+        if (meta.parallelGames !== undefined) setParallelGames(meta.parallelGames);
       }
       initTrainer(model);
       if (trainerRef.current) trainerRef.current.clearMemory();
