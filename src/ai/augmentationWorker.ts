@@ -7,7 +7,7 @@ import type { Coord } from '../types';
  * and encoding the states for training.
  */
 self.onmessage = (e) => {
-  const { experiences, focalRadii, maxTurns, rewards } = e.data;
+  const { requestId, experiences, focalRadii, maxTurns, rewards } = e.data;
   const processedData: { state: number[], action: number, reward: number, priority: number }[] = [];
 
   for (const res of experiences) {
@@ -39,5 +39,6 @@ self.onmessage = (e) => {
     }
   }
 
-  self.postMessage(processedData);
+  // Send back with the same ID
+  self.postMessage({ requestId, data: processedData });
 };

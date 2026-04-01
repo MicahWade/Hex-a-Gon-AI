@@ -42,7 +42,7 @@ export const AITraining: React.FC<Props> = ({
   currentModelName, setCurrentModelName, trainerRef, modelRef, setIsAiLoaded,
   maxTurns, setMaxTurns, batchSize, setBatchSize, epsilon, setEpsilon, parallelGames, setParallelGames
 }) => {
-  const [logs, setLog] = useState<string[]>(["[System] Performance engine active."]);
+  const [logs, setLog] = useState<string[]>(["[System] Multi-thread engine initialized."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
@@ -61,12 +61,22 @@ export const AITraining: React.FC<Props> = ({
   const pendingGen = useRef(generations);
   const pendingLoss = useRef(loss);
   const workerRef = useRef<Worker | null>(null);
+  const workerCallbacks = useRef<Map<string, (data: any) => void>>(new Map());
 
   useEffect(() => {
-    // Initialize Worker
-    workerRef.current = new Worker(new URL('../ai/augmentationWorker.ts', import.meta.url), { type: 'module' });
+    // Initialize Worker with response routing
+    const worker = new Worker(new URL('../ai/augmentationWorker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (e) => {
+      const { requestId, data } = e.data;
+      const callback = workerCallbacks.current.get(requestId);
+      if (callback) {
+        callback(data);
+        workerCallbacks.current.delete(requestId);
+      }
+    };
+    workerRef.current = worker;
     return () => {
-      workerRef.current?.terminate();
+      worker.terminate();
     };
   }, []);
 
@@ -141,9 +151,7 @@ export const AITraining: React.FC<Props> = ({
       const index = vaultData.findIndex(m => m.name === name);
       if (index !== -1) vaultData[index] = meta; else vaultData.push(meta);
       localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
-      
       localStorage.setItem('hexagon-last-model-name', name);
-
       if (!isAuto) setCurrentModelName(name);
       setVault(getVaultMetadata());
       if (!isAuto) addLog(`[System] Saved '${name}'.`);
@@ -224,35 +232,29 @@ export const AITraining: React.FC<Props> = ({
       
       const gameHistory: { boardBefore: BoardState, foci: Coord[], move: Coord, player: Player, turn: number, tacticalBonus: number, illegalActions: number[] }[] = [];
 
-      // Opponent Type Selection
-      // 70% Self-Play, 15% Random Bot, 15% Tactical Bot
       const randVal = Math.random();
       const botType: 'NONE' | 'RANDOM' | 'TACTICAL' = randVal < 0.15 ? 'RANDOM' : (randVal < 0.30 ? 'TACTICAL' : 'NONE');
       const botPlayerId = botType !== 'NONE' ? (Math.random() > 0.5 ? 1 : 2) : 0;
 
       while (!winner && turns < maxTurns && active && isTraining) {
-        if (turns % 10 === 0) await tf.nextFrame();
+        if (turns % 15 === 0) await tf.nextFrame();
 
         const boardBefore = new Map(board);
         const currentFoci = [...foci];
         let result: { board: BoardState; moves: Coord[]; winner: Player | null; actionIndices: number[] };
 
         if (currentPlayer === botPlayerId) {
-          // Bot Turn
           const moves: Coord[] = [];
           let currentBoard = new Map(board);
           const moveCount = (turns === 0 && currentPlayer === 1) ? 1 : 2;
-
           for (let m = 0; m < moveCount; m++) {
             let move: Coord;
             if (botType === 'RANDOM') {
-              const allMoves = await trainerRef.current!.getTopMoves(encodeState(currentBoard, currentPlayer, foci, focalRadii, turns, maxTurns), 100);
+              const allMoves = await trainerRef.current!.getTopMoves(encodeState(currentBoard, currentPlayer, foci, focalRadii, turns, maxTurns), 50);
               move = decodeMove(allMoves[Math.floor(Math.random() * allMoves.length)].idx, foci, focalRadii);
             } else {
-              // TACTICAL BOT: 50% block chance as requested
               move = getTacticalMove(currentBoard, currentPlayer, 0.5);
             }
-            
             const key = coordToString(move);
             if (!currentBoard.has(key)) {
               currentBoard.set(key, currentPlayer);
@@ -263,10 +265,8 @@ export const AITraining: React.FC<Props> = ({
               }
             }
           }
-          // Bots don't have "action indices" from the model
           result = { board: currentBoard, moves, winner, actionIndices: [] };
         } else {
-          // Standard AI Turn
           result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon }, turns, maxTurns);
         }
         
@@ -285,7 +285,6 @@ export const AITraining: React.FC<Props> = ({
           const myMax = getMaxLine(board, move.q, move.r, currentPlayer);
           const otherPlayer = (currentPlayer === 1 ? 2 : 1) as Player;
           const enemyMaxBefore = getMaxLine(board, move.q, move.r, otherPlayer);
-          
           if (myMax === 3) tBonus += rewards.line3;
           if (myMax === 4) tBonus += rewards.line4;
           if (myMax === 5) tBonus += rewards.line5;
@@ -323,11 +322,13 @@ export const AITraining: React.FC<Props> = ({
         if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
       }
 
-      // OFF-THREAD: Send to worker for augmentation and encoding
+      // OFF-THREAD: Send to worker with Unique Request ID
       if (workerRef.current) {
+        const requestId = Math.random().toString(36).substring(7);
         const processedBatch = await new Promise<any[]>((resolve) => {
-          workerRef.current!.onmessage = (e) => resolve(e.data);
+          workerCallbacks.current.set(requestId, resolve);
           workerRef.current!.postMessage({ 
+            requestId,
             experiences: playerResults, 
             focalRadii, 
             maxTurns, 
@@ -335,7 +336,6 @@ export const AITraining: React.FC<Props> = ({
           });
         });
 
-        // Add final processed rotations to main memory
         processedBatch.forEach(item => {
           trainerRef.current?.addToMemory(item.state, item.action, item.reward, null, item.priority);
         });
@@ -370,7 +370,6 @@ export const AITraining: React.FC<Props> = ({
         if (pendingGen.current % autoSaveFreq < results.length) performSave(true);
 
         if (active && isTraining) {
-          // PERFORMANCE: Use setImmediate-like behavior to keep UI responsive
           await new Promise(r => setTimeout(r, 10));
           runCycle();
         } else {
@@ -426,34 +425,10 @@ export const AITraining: React.FC<Props> = ({
             >
               {isStopping ? 'Stopping...' : (isTraining ? 'Stop' : 'Start Training')}
             </button>
-            
             <div className="save-container" style={{display: 'flex', gap: '5px', flex: 1, maxWidth: '300px'}}>
-              <input 
-                type="text" 
-                value={saveNameInput} 
-                onChange={e => setSaveNameInput(e.target.value)}
-                placeholder="Model Name"
-                className="save-input"
-                style={{
-                  background: 'rgba(0,0,0,0.3)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'white',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  flex: 1
-                }}
-              />
-              <button 
-                className="reset-btn" 
-                onClick={() => performSave(false)} 
-                disabled={isTraining || isStopping}
-                style={{width: 'auto', padding: '0 15px'}}
-              >
-                Save
-              </button>
+              <input type="text" value={saveNameInput} onChange={e => setSaveNameInput(e.target.value)} placeholder="Model Name" className="save-input" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', flex: 1 }} />
+              <button className="reset-btn" onClick={() => performSave(false)} disabled={isTraining || isStopping} style={{width: 'auto', padding: '0 15px'}}>Save</button>
             </div>
-
             <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship} style={{marginLeft: 'auto'}}>Champ</button>
           </div>
           <div className="stats-section" style={{marginLeft: '20px'}}>
@@ -463,7 +438,6 @@ export const AITraining: React.FC<Props> = ({
           </div>
         </div>
       </section>
-      
       <div className="ai-grid">
         <div className="ai-main-col">{vaultPanel}</div>
         <div className="ai-side-col">
