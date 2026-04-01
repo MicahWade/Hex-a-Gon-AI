@@ -6,8 +6,8 @@ import type { TrainingConfig } from '../ai/trainer';
 import type { BoardState, Coord, Player } from '../types';
 import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
-import { encodeState, coordToIndex, decodeMove } from '../ai/encoder';
-import { getMaxLine, rotateBoard, rotateCoord, getTacticalMove, checkWin } from '../gameLogic';
+import { encodeState, decodeMove } from '../ai/encoder';
+import { getMaxLine, getTacticalMove, checkWin } from '../gameLogic';
 import { coordToString } from '../types';
 
 interface Props {
@@ -60,6 +60,15 @@ export const AITraining: React.FC<Props> = ({
   const lastUiUpdate = useRef(0);
   const pendingGen = useRef(generations);
   const pendingLoss = useRef(loss);
+  const workerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    // Initialize Worker
+    workerRef.current = new Worker(new URL('../ai/augmentationWorker.ts', import.meta.url), { type: 'module' });
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
 
   useEffect(() => { setVault(getVaultMetadata()); }, []);
   useEffect(() => { 
@@ -314,36 +323,22 @@ export const AITraining: React.FC<Props> = ({
         if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
       }
 
-      // Process rewards and augmentation asynchronously to prevent UI freezing
-      for (const res of playerResults) {
-        for (const exp of res.experiences) {
-          const priority = Math.abs(res.total) + 0.1;
-          
-          // Yield to UI for every experience processed
-          await new Promise(r => setTimeout(r, 0));
+      // OFF-THREAD: Send to worker for augmentation and encoding
+      if (workerRef.current) {
+        const processedBatch = await new Promise<any[]>((resolve) => {
+          workerRef.current!.onmessage = (e) => resolve(e.data);
+          workerRef.current!.postMessage({ 
+            experiences: playerResults, 
+            focalRadii, 
+            maxTurns, 
+            rewards 
+          });
+        });
 
-          for (let r = 0; r < 6; r++) {
-            const rotBoard = rotateBoard(exp.boardBefore, r);
-            const rotFoci = exp.foci.map(f => rotateCoord(f, r));
-            const rotMove = rotateCoord(exp.move, r);
-            const rotAction = coordToIndex(rotMove, rotFoci, focalRadii);
-            
-            if (rotAction !== -1) {
-              const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
-              trainerRef.current?.addToMemory(rotState, rotAction, res.total, null, priority);
-            }
-
-            // Also penalize illegal attempts found in this turn
-            for (const actionIdx of exp.illegalActions) {
-              const rotIllegalMove = rotateCoord(decodeMove(actionIdx, exp.foci, focalRadii), r);
-              const rotIllegalAction = coordToIndex(rotIllegalMove, rotFoci, focalRadii);
-              if (rotIllegalAction !== -1) {
-                const rotState = encodeState(rotBoard, exp.player, rotFoci, focalRadii, exp.turn, maxTurns);
-                trainerRef.current?.addToMemory(rotState, rotIllegalAction, rewards.illegal, null, priority);
-              }
-            }
-          }
-        }
+        // Add final processed rotations to main memory
+        processedBatch.forEach(item => {
+          trainerRef.current?.addToMemory(item.state, item.action, item.reward, null, item.priority);
+        });
       }
 
       return { winner, turns, botType };
