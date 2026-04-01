@@ -4,9 +4,9 @@ Hex-A-Gon is a high-performance, reinforcement learning environment for an infin
 
 ## 🚀 Advanced ML Features
 
-- **High-Intensity Parallel Training**: Simulates multiple games simultaneously to maximize GPU utilization.
+- **High-Intensity Parallel Training**: Simulates 16-32 games simultaneously to maximize GPU utilization.
 - **6x Data Augmentation**: Utilizes hexagonal rotational symmetry to multiply learning efficiency by 600%.
-- **Dueling Deep Q-Network (DQN)**: Robust architecture that separates state-value estimation from action advantage.
+- **Dueling Deep Q-Network (DQN)**: Advanced architecture that separates state-value estimation from action advantage.
 - **Tactical Instinct Rewards**: Immediate feedback system for building lines (3/4/5-in-a-row) and blocking opponent threats.
 - **Prioritized Experience Replay (PER)**: Focuses training on the most critical strategic lessons rather than random moves.
 - **Shallow MCTS Look-Ahead**: AI "thinks" before it moves, simulating future outcomes to avoid obvious traps.
@@ -15,34 +15,44 @@ Hex-A-Gon is a high-performance, reinforcement learning environment for an infin
 ## 🛠️ Tech Stack
 
 - **Frontend**: React 19 (Vite)
-- **Engine**: Custom Hexagonal Coordinate System (Axial)
 - **Intelligence**: TensorFlow.js (Deep Q-Learning)
-- **Persistence**: IndexedDB for model weights and training metadata
+- **Persistence**: IndexedDB for local model storage
 
-## 🎮 How to Play
+## 📥 Local Setup & Installation
 
-1. **PvP Mode**: Play against a local friend on an infinite grid.
-2. **PvAI Mode**: Challenge your trained models.
-3. **AI Lab**: Initialize new models, configure architecture (Hidden Layers, Focal Radii), and watch the AI evolve in real-time.
+Follow these steps to run the environment on your own machine:
 
-## 🧠 Training Tips
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/MicahWade/Hex-a-Gon-AI.git
+    cd Hex-a-Gon-AI/Hex-A-Gon
+    ```
 
-- **Starting Fresh**: When changing rewards or architecture, it is best to initialize a new model.
-- **Parallel Games**: Increase the "Parallel" count to train faster if your GPU/CPU can handle it.
-- **Save Names**: You can now rename and save models directly in the UI without browser prompts.
+2.  **Install Dependencies**:
+    Make sure you have [Node.js](https://nodejs.org/) installed.
+    ```bash
+    npm install
+    ```
 
-## 🏗️ Development
+3.  **Start the Development Server**:
+    ```bash
+    npm run dev
+    ```
+    The application will be available at `http://localhost:5173`.
 
-```bash
-# Install dependencies
-npm install
+4.  **Build for Production**:
+    ```bash
+    npm run build
+    ```
 
-# Start development server
-npm run dev
+## 🎮 How to Train Your First AI
 
-# Build for production
-npm run build
-```
+1.  Navigate to the **Architecture** tab to set your brain size (Default: 1536x1536x2048).
+2.  Go to the **AI Training Lab** tab.
+3.  Type a name for your model and click **Initialize New Model**.
+4.  Adjust the **Parallel Games** setting based on your hardware (16-32 is recommended for modern GPUs).
+5.  Click **Start Training** and watch the "Gen" count rise!
+6.  Once you're happy with the progress, click **Save** and head to the **Play Game** tab to challenge your creation in **PvAI** mode.
 
 ## 📜 License
 
