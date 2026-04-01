@@ -10,6 +10,9 @@ import { encodeState, decodeMove } from '../ai/encoder';
 import { getMaxLine, getTacticalMove, checkWin } from '../gameLogic';
 import { coordToString } from '../types';
 
+// VITE WORKER IMPORT (More stable than new URL constructor)
+import AugmentationWorker from '../ai/augmentationWorker?worker';
+
 interface Props {
   isTraining: boolean;
   setIsTraining: (val: boolean) => void;
@@ -53,7 +56,6 @@ export const AITraining: React.FC<Props> = ({
   const [isStopping, setIsStopping] = useState(false);
   const [saveNameInput, setSaveNameInput] = useState(currentModelName);
   
-  // FIXED: Stats are now refs to prevent Effect re-triggers (The cause of the freeze)
   const bucketStatsRef = useRef<number[]>([1, 1, 1, 1]);
   const [visibleBucketStats, setVisibleBucketStats] = useState<number[]>([1, 1, 1, 1]);
   const bucketHistory = useRef<{ bucketIdx: number, win: boolean }[]>([]);
@@ -66,7 +68,8 @@ export const AITraining: React.FC<Props> = ({
   const workerCallbacks = useRef<Map<string, (data: any) => void>>(new Map());
 
   useEffect(() => {
-    const worker = new Worker(new URL('../ai/augmentationWorker.ts', import.meta.url), { type: 'module' });
+    // Initialize Worker using Vite class
+    const worker = new AugmentationWorker();
     worker.onmessage = (e) => {
       const { requestId, data } = e.data;
       const callback = workerCallbacks.current.get(requestId);
@@ -354,7 +357,6 @@ export const AITraining: React.FC<Props> = ({
 
     runCycle();
     return () => { active = false; };
-    // bucketStats removed from deps to prevent infinite restart loop
   }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, parallelGames]);
 
   const vaultPanel = useMemo(() => (
