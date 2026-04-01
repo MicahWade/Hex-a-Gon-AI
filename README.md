@@ -1,42 +1,49 @@
-# Hex-A-Gon
+# ⬢ Hex-A-Gon AI
 
-A strategic, infinite-grid hexagonal "6-in-a-row" game built with React, TypeScript, and TensorFlow.js.
+Hex-A-Gon is a high-performance, reinforcement learning environment for an infinite hexagonal connection game. Built with **React**, **TypeScript**, and **TensorFlow.js**, it allows users to design, train, and compete against advanced neural network architectures directly in the browser.
 
-## 🧠 AI Training Lab (Browser-Based)
+## 🚀 Advanced ML Features
 
-Hex-A-Gon features a fully integrated **Reinforcement Learning** environment. You can design, train, and test Deep Learning models entirely within your web browser.
+- **High-Intensity Parallel Training**: Simulates multiple games simultaneously to maximize GPU utilization.
+- **6x Data Augmentation**: Utilizes hexagonal rotational symmetry to multiply learning efficiency by 600%.
+- **Dueling Deep Q-Network (DQN)**: Robust architecture that separates state-value estimation from action advantage.
+- **Tactical Instinct Rewards**: Immediate feedback system for building lines (3/4/5-in-a-row) and blocking opponent threats.
+- **Prioritized Experience Replay (PER)**: Focuses training on the most critical strategic lessons rather than random moves.
+- **Shallow MCTS Look-Ahead**: AI "thinks" before it moves, simulating future outcomes to avoid obvious traps.
+- **Dynamic Learning Rate**: Exponentially decaying optimizer for fast initial learning and high-precision late-game polishing.
 
-### 📍 Where Training Happens
-Training occurs **locally on your machine** using your browser's hardware acceleration (GPU via WebGL). 
-- **Privacy**: No game data or models are ever uploaded to a server.
-- **Performance**: High-speed self-play happens in a background loop within the application.
+## 🛠️ Tech Stack
 
-### 🛠️ How to Train:
+- **Frontend**: React 19 (Vite)
+- **Engine**: Custom Hexagonal Coordinate System (Axial)
+- **Intelligence**: TensorFlow.js (Deep Q-Learning)
+- **Persistence**: IndexedDB for model weights and training metadata
 
-1.  **Architecture**: Go to the **Architecture** tab.
-    - Set your **Global Focus** (default R14) and **Self Focus** (default R8).
-    - Use **Auto-Fill** to generate an optimized "Funnel" neural network for your desired depth.
-2.  **Incentives**: Go to the **AI Training** tab.
-    - Tune the **Reward System** (e.g., Threat Detection vs. Efficiency).
-3.  **Execute**: Press **"Start Training"**. 
-    - The **Training Log** will show real-time game results.
-    - The **Loss** metric tracks the AI's learning progress (lower is better).
+## 🎮 How to Play
 
-### 🔬 Advanced Architecture
-- **Multi-Focal Vision**: The AI "sees" through 6 simultaneous focal windows (Global, Self, and 4 tactical memory windows).
-- **Sequential 2-Move Logic**: The AI makes its two moves one-by-one, re-observing the board after the first move for better tactical awareness.
-- **Mirror Selection**: The output layer is a 1-to-1 mapping of all observed hexes, making it highly efficient for spatial learning.
+1. **PvP Mode**: Play against a local friend on an infinite grid.
+2. **PvAI Mode**: Challenge your trained models.
+3. **AI Lab**: Initialize new models, configure architecture (Hidden Layers, Focal Radii), and watch the AI evolve in real-time.
 
-## 🎮 Game Rules
-- **Objective**: Connect **six** hexagons in a straight line.
-- **Opening**: Player 1 starts at (0,0).
-- **Turns**: Every turn after the first consists of **two moves**.
-- **Board**: Infinite expansion in all directions.
+## 🧠 Training Tips
 
-## 🛠️ Technical Stack
-- **Framework**: React 19
-- **AI Engine**: TensorFlow.js (Deep Q-Learning)
-- **Rendering**: HTML5 Canvas API
+- **Starting Fresh**: When changing rewards or architecture, it is best to initialize a new model.
+- **Parallel Games**: Increase the "Parallel" count to train faster if your GPU/CPU can handle it.
+- **Save Names**: You can now rename and save models directly in the UI without browser prompts.
 
----
-Developed for high-performance hexagonal strategy and AI research.
+## 🏗️ Development
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+## 📜 License
+
+MIT

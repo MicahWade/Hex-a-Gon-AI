@@ -26,7 +26,6 @@ interface Props {
   trainerRef: React.MutableRefObject<Trainer | null>;
   modelRef: React.MutableRefObject<tf.LayersModel | null>;
   setIsAiLoaded: (val: boolean) => void;
-  // Lifted Props
   maxTurns: number;
   setMaxTurns: (val: number) => void;
   batchSize: number;
@@ -49,6 +48,7 @@ export const AITraining: React.FC<Props> = ({
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
   const [autoSaveFreq, setAutoSaveFreq] = useState(50);
   const [isStopping, setIsStopping] = useState(false);
+  const [saveNameInput, setSaveNameInput] = useState(currentModelName);
   
   const [rewards, setRewards] = useState({
     p1Win: 4.0, p2Win: 5.0, p1Draw: 0.4, p2Draw: 0.6,
@@ -66,6 +66,10 @@ export const AITraining: React.FC<Props> = ({
     genRef.current = generations;
     pendingGen.current = generations;
   }, [generations]);
+
+  useEffect(() => {
+    setSaveNameInput(currentModelName);
+  }, [currentModelName]);
 
   const addLog = (msg: string) => { setLog(prev => [msg, ...prev].slice(0, 30)); };
   const parseSafeFloat = (val: string): number => {
@@ -116,7 +120,7 @@ export const AITraining: React.FC<Props> = ({
   const performSave = async (isAuto = false) => {
     if (!trainerRef.current || !modelRef.current) return;
     try {
-      const name = isAuto ? currentModelName : (prompt("Enter model name:", currentModelName) || currentModelName);
+      const name = isAuto ? currentModelName : (saveNameInput || currentModelName);
       const { inputNodes, outputNodes } = getIOConfig();
       const meta: ModelMetadata = {
         name, timestamp: Date.now(), inputNodes, outputNodes, hiddenLayers: layers,
@@ -128,7 +132,6 @@ export const AITraining: React.FC<Props> = ({
       if (index !== -1) vaultData[index] = meta; else vaultData.push(meta);
       localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
       
-      // Save last model name for auto-load
       localStorage.setItem('hexagon-last-model-name', name);
 
       if (!isAuto) setCurrentModelName(name);
@@ -155,7 +158,6 @@ export const AITraining: React.FC<Props> = ({
       if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
       addLog(`[System] Loaded '${name}'.`);
-      // Update last active
       localStorage.setItem('hexagon-last-model-name', name);
     } catch (e) { addLog(`[Error] Failed to load.`); }
   };
@@ -221,7 +223,6 @@ export const AITraining: React.FC<Props> = ({
         
         const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: currentEpsilon }, turns, maxTurns);
         
-        // Find illegal attempts
         const illegalActions: number[] = [];
         if (currentPlayer !== randomPlayerId && board.size > 0) {
           const topOptions = await trainerRef.current!.getTopMoves(encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns), 3);
@@ -366,15 +367,46 @@ export const AITraining: React.FC<Props> = ({
           </div>
         </div>
         <div className="top-bar-row" style={{marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px'}}>
-          <div className="action-buttons">
-            <button className={isStopping ? 'stopping-btn' : (isTraining ? 'stop-btn' : 'start-btn')} onClick={toggleTraining} disabled={isStopping}>
+          <div className="action-buttons" style={{flex: 1, display: 'flex', alignItems: 'center', gap: '10px'}}>
+            <button 
+              className={isStopping ? 'stopping-btn' : (isTraining ? 'stop-btn' : 'start-btn')} 
+              onClick={toggleTraining} 
+              disabled={isStopping}
+              style={{flex: '0 0 auto', width: '140px'}}
+            >
               {isStopping ? 'Stopping...' : (isTraining ? 'Stop' : 'Start Training')}
             </button>
-            <button className="reset-btn" onClick={() => performSave(false)} disabled={isTraining || isStopping}>Save</button>
-            <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship}>Champ</button>
+            
+            <div className="save-container" style={{display: 'flex', gap: '5px', flex: 1, maxWidth: '300px'}}>
+              <input 
+                type="text" 
+                value={saveNameInput} 
+                onChange={e => setSaveNameInput(e.target.value)}
+                placeholder="Model Name"
+                className="save-input"
+                style={{
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'white',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  flex: 1
+                }}
+              />
+              <button 
+                className="reset-btn" 
+                onClick={() => performSave(false)} 
+                disabled={isTraining || isStopping}
+                style={{width: 'auto', padding: '0 15px'}}
+              >
+                Save
+              </button>
+            </div>
+
+            <button className="recommend-btn" onClick={runChampionship} disabled={isTraining || isChampionship} style={{marginLeft: 'auto'}}>Champ</button>
           </div>
-          <div className="stats-section">
-            <div className="stat-pill"><span>Model</span> <strong>{currentModelName}</strong></div>
+          <div className="stats-section" style={{marginLeft: '20px'}}>
             <div className="stat-pill"><span>Gen</span> <strong>{generations}</strong></div>
             <div className="stat-pill"><span>Loss</span> <strong>{loss.toFixed(4)}</strong></div>
             {champResults && <div className="champ-pill"><span>Score</span> <strong>{champResults.p1}-{champResults.p2}</strong></div>}
