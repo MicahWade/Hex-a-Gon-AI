@@ -36,13 +36,17 @@ interface Props {
   setParallelGames: (val: number) => void;
 }
 
+// ADAPTIVE EPSILON CONFIG
+const EPSILON_BUCKETS = [0.05, 0.15, 0.35, 0.65];
+const BUCKET_LABELS = ['Conservative', 'Standard', 'Aggressive', 'Chaos'];
+
 export const AITraining: React.FC<Props> = ({ 
   isTraining, setIsTraining, layers, setLayers, focalRadii, setFocalRadii,
   generations, setGenerations, loss, setLoss,
   currentModelName, setCurrentModelName, trainerRef, modelRef, setIsAiLoaded,
   maxTurns, setMaxTurns, batchSize, setBatchSize, epsilon, setEpsilon, parallelGames, setParallelGames
 }) => {
-  const [logs, setLog] = useState<string[]>(["[System] Multi-thread engine initialized."]);
+  const [logs, setLog] = useState<string[]>(["[System] Adaptive engine active."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
@@ -50,6 +54,10 @@ export const AITraining: React.FC<Props> = ({
   const [isStopping, setIsStopping] = useState(false);
   const [saveNameInput, setSaveNameInput] = useState(currentModelName);
   
+  // Adaptive State
+  const [bucketStats, setBucketStats] = useState<number[]>([1, 1, 1, 1]); // Wins per bucket
+  const bucketHistory = useRef<{ bucketIdx: number, win: boolean }[]>([]);
+
   const [rewards, setRewards] = useState({
     p1Win: 4.0, p2Win: 5.0, p1Draw: 0.4, p2Draw: 0.6,
     line3: 0.05, line4: 0.15, line5: 0.50, block4: 0.20, block5: 0.50, 
@@ -64,20 +72,14 @@ export const AITraining: React.FC<Props> = ({
   const workerCallbacks = useRef<Map<string, (data: any) => void>>(new Map());
 
   useEffect(() => {
-    // Initialize Worker with response routing
     const worker = new Worker(new URL('../ai/augmentationWorker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (e) => {
       const { requestId, data } = e.data;
       const callback = workerCallbacks.current.get(requestId);
-      if (callback) {
-        callback(data);
-        workerCallbacks.current.delete(requestId);
-      }
+      if (callback) { callback(data); workerCallbacks.current.delete(requestId); }
     };
     workerRef.current = worker;
-    return () => {
-      worker.terminate();
-    };
+    return () => { worker.terminate(); };
   }, []);
 
   useEffect(() => { setVault(getVaultMetadata()); }, []);
@@ -86,9 +88,7 @@ export const AITraining: React.FC<Props> = ({
     pendingGen.current = generations;
   }, [generations]);
 
-  useEffect(() => {
-    setSaveNameInput(currentModelName);
-  }, [currentModelName]);
+  useEffect(() => { setSaveNameInput(currentModelName); }, [currentModelName]);
 
   const addLog = (msg: string) => { setLog(prev => [msg, ...prev].slice(0, 30)); };
   const parseSafeFloat = (val: string): number => {
@@ -222,14 +222,25 @@ export const AITraining: React.FC<Props> = ({
     const runSingleGame = async () => {
       const currentLR = Math.max(0.0001, 0.001 * Math.pow(0.99, genRef.current / 100));
       trainerRef.current!.setLearningRate(currentLR);
-      const config: TrainingConfig = { learningRate: currentLR, batchSize, gamma: 0.95, epsilon, rewards: rewards as any };
+      
+      // ADAPTIVE EPSILON SELECTION
+      // Based on win stats of last 1000 games
+      const totalWeight = bucketStats.reduce((a, b) => a + b, 0);
+      let r = Math.random() * totalWeight;
+      let bucketIdx = 0;
+      for (let i = 0; i < bucketStats.length; i++) {
+        r -= bucketStats[i];
+        if (r <= 0) { bucketIdx = i; break; }
+      }
+      const chosenEpsilon = EPSILON_BUCKETS[bucketIdx];
+
+      const config: TrainingConfig = { learningRate: currentLR, batchSize, gamma: 0.95, epsilon: chosenEpsilon, rewards: rewards as any };
       
       let board: BoardState = new Map();
       let currentPlayer: Player = 1;
       let winner: Player | null = null;
       let foci: Coord[] = Array(6).fill({ q: 0, r: 0 });
       let turns = 0;
-      
       const gameHistory: { boardBefore: BoardState, foci: Coord[], move: Coord, player: Player, turn: number, tacticalBonus: number, illegalActions: number[] }[] = [];
 
       const randVal = Math.random();
@@ -238,7 +249,6 @@ export const AITraining: React.FC<Props> = ({
 
       while (!winner && turns < maxTurns && active && isTraining) {
         if (turns % 15 === 0) await tf.nextFrame();
-
         const boardBefore = new Map(board);
         const currentFoci = [...foci];
         let result: { board: BoardState; moves: Coord[]; winner: Player | null; actionIndices: number[] };
@@ -256,57 +266,32 @@ export const AITraining: React.FC<Props> = ({
               move = getTacticalMove(currentBoard, currentPlayer, 0.5);
             }
             const key = coordToString(move);
-            if (!currentBoard.has(key)) {
-              currentBoard.set(key, currentPlayer);
-              moves.push(move);
-              if (checkWin(currentBoard, move.q, move.r, currentPlayer)) {
-                winner = currentPlayer;
-                break;
-              }
-            }
+            if (!currentBoard.has(key)) { currentBoard.set(key, currentPlayer); moves.push(move); if (checkWin(currentBoard, move.q, move.r, currentPlayer)) { winner = currentPlayer; break; } }
           }
           result = { board: currentBoard, moves, winner, actionIndices: [] };
         } else {
-          result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon }, turns, maxTurns);
+          result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: chosenEpsilon }, turns, maxTurns);
         }
         
         const illegalActions: number[] = [];
         if (currentPlayer !== botPlayerId && board.size > 0) {
           const topOptions = await trainerRef.current!.getTopMoves(encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns), 3);
-          topOptions.forEach(opt => {
-            if (board.has(coordToString(decodeMove(opt.idx, foci, focalRadii)))) {
-              illegalActions.push(opt.idx);
-            }
-          });
+          topOptions.forEach(opt => { if (board.has(coordToString(decodeMove(opt.idx, foci, focalRadii)))) illegalActions.push(opt.idx); });
         }
 
         result.moves.forEach((move) => {
-          let tBonus = 0;
           const myMax = getMaxLine(board, move.q, move.r, currentPlayer);
-          const otherPlayer = (currentPlayer === 1 ? 2 : 1) as Player;
-          const enemyMaxBefore = getMaxLine(board, move.q, move.r, otherPlayer);
-          if (myMax === 3) tBonus += rewards.line3;
-          if (myMax === 4) tBonus += rewards.line4;
-          if (myMax === 5) tBonus += rewards.line5;
-          if (enemyMaxBefore === 4) tBonus += rewards.block4;
-          if (enemyMaxBefore === 5) tBonus += rewards.block5;
-
-          gameHistory.push({ 
-            boardBefore: boardBefore,
-            foci: currentFoci,
-            move: move,
-            player: currentPlayer, 
-            turn: turns, 
-            tacticalBonus: tBonus,
-            illegalActions: illegalActions
-          });
+          const other = (currentPlayer === 1 ? 2 : 1) as Player;
+          const enemyMaxBefore = getMaxLine(board, move.q, move.r, other);
+          let tBonus = 0;
+          if (myMax === 3) tBonus += rewards.line3; if (myMax === 4) tBonus += rewards.line4; if (myMax === 5) tBonus += rewards.line5;
+          if (enemyMaxBefore === 4) tBonus += rewards.block4; if (enemyMaxBefore === 5) tBonus += rewards.block5;
+          gameHistory.push({ boardBefore: boardBefore, foci: currentFoci, move: move, player: currentPlayer, turn: turns, tacticalBonus: tBonus, illegalActions: illegalActions });
         });
 
-        board = result.board;
-        winner = result.winner;
+        board = result.board; winner = result.winner;
         if (result.moves.length > 0) foci[0] = result.moves[result.moves.length - 1];
-        currentPlayer = currentPlayer === 1 ? 2 : 1;
-        turns++;
+        currentPlayer = currentPlayer === 1 ? 2 : 1; turns++;
       }
 
       const playerResults = [1, 2].map(p => {
@@ -320,28 +305,27 @@ export const AITraining: React.FC<Props> = ({
         const winIdx = playerResults.findIndex(r => r.player === winner);
         const loseIdx = playerResults.findIndex(r => r.player !== winner);
         if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
+        
+        // RECORD ADAPTIVE STATS
+        const isBotWinner = winner === botPlayerId;
+        bucketHistory.current.push({ bucketIdx, win: !isBotWinner }); // Win for the model
+        if (bucketHistory.current.length > 1000) bucketHistory.current.shift();
+        
+        const newStats = [1, 1, 1, 1]; // Reset with laplace smoothing
+        bucketHistory.current.forEach(h => { if (h.win) newStats[h.bucketIdx]++; });
+        setBucketStats(newStats);
       }
 
-      // OFF-THREAD: Send to worker with Unique Request ID
       if (workerRef.current) {
         const requestId = Math.random().toString(36).substring(7);
         const processedBatch = await new Promise<any[]>((resolve) => {
           workerCallbacks.current.set(requestId, resolve);
-          workerRef.current!.postMessage({ 
-            requestId,
-            experiences: playerResults, 
-            focalRadii, 
-            maxTurns, 
-            rewards 
-          });
+          workerRef.current!.postMessage({ requestId, experiences: playerResults, focalRadii, maxTurns, rewards });
         });
-
-        processedBatch.forEach(item => {
-          trainerRef.current?.addToMemory(item.state, item.action, item.reward, null, item.priority);
-        });
+        processedBatch.forEach(item => { trainerRef.current?.addToMemory(item.state, item.action, item.reward, null, item.priority); });
       }
 
-      return { winner, turns, botType };
+      return { winner, turns, botType, bucketIdx };
     };
 
     const runCycle = async () => {
@@ -353,38 +337,23 @@ export const AITraining: React.FC<Props> = ({
         results.forEach(res => {
           if (res.winner) {
             const opponentStr = res.botType === 'NONE' ? 'Self' : (res.botType === 'RANDOM' ? 'Random' : 'Tactical');
-            addLog(`[Game] P${res.winner} won in ${res.turns} turns (vs ${opponentStr}).`);
+            addLog(`[Game] P${res.winner} won (${opponentStr}) • Epsilon: ${EPSILON_BUCKETS[res.bucketIdx]}`);
           }
         });
 
         pendingGen.current += results.length;
         if (l) pendingLoss.current = l;
-
         const now = Date.now();
-        if (now - lastUiUpdate.current > 500) {
-          setGenerations(pendingGen.current);
-          setLoss(pendingLoss.current);
-          lastUiUpdate.current = now;
-        }
-
+        if (now - lastUiUpdate.current > 500) { setGenerations(pendingGen.current); setLoss(pendingLoss.current); lastUiUpdate.current = now; }
         if (pendingGen.current % autoSaveFreq < results.length) performSave(true);
-
-        if (active && isTraining) {
-          await new Promise(r => setTimeout(r, 10));
-          runCycle();
-        } else {
-          setIsStopping(false);
-          addLog("[System] Training paused.");
-        }
-      } catch (err) {
-        if (active && isTraining) setTimeout(runCycle, 2000);
-        else setIsStopping(false);
-      }
+        if (active && isTraining) { await new Promise(r => setTimeout(r, 10)); runCycle(); }
+        else { setIsStopping(false); addLog("[System] Training paused."); }
+      } catch (err) { if (active && isTraining) setTimeout(runCycle, 2000); else setIsStopping(false); }
     };
 
     runCycle();
     return () => { active = false; };
-  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, parallelGames]);
+  }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, parallelGames, bucketStats]);
 
   const vaultPanel = useMemo(() => (
     <section className="model-vault card full-height-card">
@@ -411,18 +380,12 @@ export const AITraining: React.FC<Props> = ({
             <div className="mini-input-row"><label>Max Turns</label><input type="number" value={maxTurns} onChange={e => setMaxTurns(parseSafeFloat(e.target.value))} min="10" max="500" /></div>
             <div className="mini-input-row"><label>Batch Size</label><input type="number" value={batchSize} onChange={e => setBatchSize(parseSafeFloat(e.target.value))} min="32" max="1024" /></div>
             <div className="mini-input-row"><label>Parallel</label><input type="number" value={parallelGames} onChange={e => setParallelGames(Math.max(1, parseInt(e.target.value)))} min="1" max="64" /></div>
-            <div className="mini-input-row"><label>Randomness</label><input type="number" value={epsilon} onChange={e => setEpsilon(parseSafeFloat(e.target.value))} step={0.05} min="0" max="1" /></div>
             <div className="mini-input-row"><label>Auto-Save</label><input type="number" value={autoSaveFreq} onChange={e => setAutoSaveFreq(Math.max(1, parseInt(e.target.value)))} min="1" max="1000" /></div>
           </div>
         </div>
         <div className="top-bar-row" style={{marginTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px'}}>
           <div className="action-buttons" style={{flex: 1, display: 'flex', alignItems: 'center', gap: '10px'}}>
-            <button 
-              className={isStopping ? 'stopping-btn' : (isTraining ? 'stop-btn' : 'start-btn')} 
-              onClick={toggleTraining} 
-              disabled={isStopping}
-              style={{flex: '0 0 auto', width: '140px'}}
-            >
+            <button className={isStopping ? 'stopping-btn' : (isTraining ? 'stop-btn' : 'start-btn')} onClick={toggleTraining} disabled={isStopping} style={{flex: '0 0 auto', width: '140px'}}>
               {isStopping ? 'Stopping...' : (isTraining ? 'Stop' : 'Start Training')}
             </button>
             <div className="save-container" style={{display: 'flex', gap: '5px', flex: 1, maxWidth: '300px'}}>
@@ -438,10 +401,24 @@ export const AITraining: React.FC<Props> = ({
           </div>
         </div>
       </section>
+      
       <div className="ai-grid">
         <div className="ai-main-col">{vaultPanel}</div>
         <div className="ai-side-col">
           <section className="reward-config card full-height-card">
+            <h3>Exploration Pulse</h3>
+            <div className="epsilon-pulse-grid" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px'}}>
+              {EPSILON_BUCKETS.map((val, i) => (
+                <div key={val} className="pulse-item" style={{background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)'}}>
+                  <div style={{fontSize: '10px', color: 'rgba(255,255,255,0.5)'}}>{BUCKET_LABELS[i]}</div>
+                  <div style={{fontSize: '14px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between'}}>
+                    <span>{val}</span>
+                    <span style={{color: '#2ecc71'}}>{Math.round((bucketStats[i] / bucketStats.reduce((a,b)=>a+b,0)) * 100)}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <h3>Reward System</h3>
             <div className="reward-grid">
               <div className="input-group"><label>Win P1/P2</label><div className="dual-input"><input type="number" value={rewards.p1Win} onChange={e => setRewards({...rewards, p1Win: parseSafeFloat(e.target.value)})} /><input type="number" value={rewards.p2Win} onChange={e => setRewards({...rewards, p2Win: parseSafeFloat(e.target.value)})} /></div></div>
