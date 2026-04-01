@@ -217,6 +217,9 @@ export const AITraining: React.FC<Props> = ({
       const randomPlayerId = isRandomOpponent ? (Math.random() > 0.5 ? 1 : 2) : 0;
 
       while (!winner && turns < maxTurns && active && isTraining) {
+        // PERFORMANCE: Yield to UI every 10 turns
+        if (turns % 10 === 0) await tf.nextFrame();
+
         const boardBefore = new Map(board);
         const currentFoci = [...foci];
         const currentEpsilon = (currentPlayer === randomPlayerId) ? 1.0 : epsilon;
@@ -276,6 +279,7 @@ export const AITraining: React.FC<Props> = ({
         if (playerResults[winIdx].total <= playerResults[loseIdx].total) playerResults[winIdx].total = playerResults[loseIdx].total + 0.1;
       }
 
+      // Process rewards and augmentation
       playerResults.forEach(res => {
         res.experiences.forEach(exp => {
           const priority = Math.abs(res.total) + 0.1;
@@ -322,7 +326,9 @@ export const AITraining: React.FC<Props> = ({
         if (pendingGen.current % autoSaveFreq < results.length) performSave(true);
 
         if (active && isTraining) {
-          setTimeout(runCycle, 10);
+          // PERFORMANCE: Use setImmediate-like behavior to keep UI responsive
+          await new Promise(r => setTimeout(r, 10));
+          runCycle();
         } else {
           setIsStopping(false);
           addLog("[System] Training paused.");
