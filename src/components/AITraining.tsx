@@ -26,21 +26,27 @@ interface Props {
   trainerRef: React.MutableRefObject<Trainer | null>;
   modelRef: React.MutableRefObject<tf.LayersModel | null>;
   setIsAiLoaded: (val: boolean) => void;
+  // Lifted Props
+  maxTurns: number;
+  setMaxTurns: (val: number) => void;
+  batchSize: number;
+  setBatchSize: (val: number) => void;
+  epsilon: number;
+  setEpsilon: (val: number) => void;
+  parallelGames: number;
+  setParallelGames: (val: number) => void;
 }
 
 export const AITraining: React.FC<Props> = ({ 
   isTraining, setIsTraining, layers, setLayers, focalRadii, setFocalRadii,
   generations, setGenerations, loss, setLoss,
-  currentModelName, setCurrentModelName, trainerRef, modelRef, setIsAiLoaded
+  currentModelName, setCurrentModelName, trainerRef, modelRef, setIsAiLoaded,
+  maxTurns, setMaxTurns, batchSize, setBatchSize, epsilon, setEpsilon, parallelGames, setParallelGames
 }) => {
   const [logs, setLog] = useState<string[]>(["[System] Performance engine active."]);
   const [vault, setVault] = useState<ModelMetadata[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
   const [champResults, setChampResults] = useState<{ p1: number, p2: number } | null>(null);
-  const [maxTurns, setMaxTurns] = useState(250);
-  const [batchSize, setBatchSize] = useState(64);
-  const [parallelGames, setParallelGames] = useState(4);
-  const [epsilon, setEpsilon] = useState(0.2);
   const [autoSaveFreq, setAutoSaveFreq] = useState(50);
   const [isStopping, setIsStopping] = useState(false);
   
@@ -121,6 +127,10 @@ export const AITraining: React.FC<Props> = ({
       const index = vaultData.findIndex(m => m.name === name);
       if (index !== -1) vaultData[index] = meta; else vaultData.push(meta);
       localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
+      
+      // Save last model name for auto-load
+      localStorage.setItem('hexagon-last-model-name', name);
+
       if (!isAuto) setCurrentModelName(name);
       setVault(getVaultMetadata());
       if (!isAuto) addLog(`[System] Saved '${name}'.`);
@@ -145,6 +155,8 @@ export const AITraining: React.FC<Props> = ({
       if (trainerRef.current) trainerRef.current.clearMemory();
       setCurrentModelName(name);
       addLog(`[System] Loaded '${name}'.`);
+      // Update last active
+      localStorage.setItem('hexagon-last-model-name', name);
     } catch (e) { addLog(`[Error] Failed to load.`); }
   };
 
@@ -296,7 +308,6 @@ export const AITraining: React.FC<Props> = ({
         const results = await Promise.all(games);
         const l = await trainerRef.current!.trainBatch(batchSize);
         
-        // PERFORMANCE: Batch state updates
         pendingGen.current += results.length;
         if (l) pendingLoss.current = l;
 
@@ -325,7 +336,6 @@ export const AITraining: React.FC<Props> = ({
     return () => { active = false; };
   }, [isTraining, rewards, maxTurns, focalRadii, epsilon, batchSize, autoSaveFreq, parallelGames]);
 
-  // Memoize static panels to prevent unnecessary re-renders
   const vaultPanel = useMemo(() => (
     <section className="model-vault card full-height-card">
       <h3>Model Vault</h3>

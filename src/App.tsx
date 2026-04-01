@@ -8,10 +8,11 @@ import { ModelConfig } from './components/ModelConfig';
 import { Settings } from './components/Settings';
 import { MoveLog } from './components/MoveLog';
 import { Trainer } from './ai/trainer';
-import { encodeState, decodeMove } from './ai/encoder';
+import { decodeMove } from './ai/encoder';
 import { checkWin, getMaxLine } from './gameLogic';
 import { coordToString } from './types';
 import type { NotationType, LogPosition, Theme, Player, Coord } from './types';
+import { getVaultMetadata } from './ai/modelVault';
 import './App.css';
 
 type Tab = 'play' | 'rules' | 'ai' | 'architecture' | 'history' | 'settings';
@@ -34,6 +35,12 @@ function App() {
   const [activeModelName, setActiveModelName] = useState<string>("default-model");
   const [isAiLoaded, setIsAiLoaded] = useState(false);
 
+  // Lifted Training States
+  const [maxTurns, setMaxTurns] = useState(250);
+  const [batchSize, setBatchSize] = useState(64);
+  const [epsilon, setEpsilon] = useState(0.2);
+  const [parallelGames, setParallelGames] = useState(4);
+
   // SHARED AI INSTANCE
   const sharedModelRef = useRef<tf.LayersModel | null>(null);
   const sharedTrainerRef = useRef<Trainer | null>(null);
@@ -54,25 +61,42 @@ function App() {
     resetGame
   } = useHexGame();
 
-  // Auto-load last model on boot
+  // Auto-load last model on boot with Metadata restoration
   useEffect(() => {
     const autoLoad = async () => {
       try {
-        // Try to load the standard model
-        const model = await tf.loadLayersModel('indexeddb://hex-a-gon-model');
+        // Try to find if there was a previously active model
+        const vault = getVaultMetadata();
+        // If we have a model name saved in localStorage from last session, use it
+        // For now, let's look for 'hex-a-gon-model' as the default standard
+        const lastModelName = localStorage.getItem('hexagon-last-model-name') || "hex-a-gon-model";
+        
+        const model = await tf.loadLayersModel(`indexeddb://${lastModelName}`);
         if (!model.optimizer) {
           model.compile({
             optimizer: tf.train.adam(0.001),
-            loss: 'categoricalCrossentropy',
+            loss: 'meanSquaredError',
             metrics: ['accuracy']
           });
         }
         sharedModelRef.current = model;
         sharedTrainerRef.current = new Trainer(model);
         setIsAiLoaded(true);
-        setActiveModelName("hex-a-gon-model");
+        setActiveModelName(lastModelName);
+
+        // Restore Metadata if available (Backwards Compatible)
+        const meta = vault.find(m => m.name === lastModelName);
+        if (meta) {
+          if (meta.hiddenLayers) setNetworkArchitecture(meta.hiddenLayers);
+          if (meta.focalRadii) setFocalRadii(meta.focalRadii);
+          if (meta.generation !== undefined) setGenerations(meta.generation);
+          if (meta.maxTurns !== undefined) setMaxTurns(meta.maxTurns);
+          if (meta.batchSize !== undefined) setBatchSize(meta.batchSize);
+          if (meta.epsilon !== undefined) setEpsilon(meta.epsilon);
+          // parallelGames isn't in meta yet, but we'll keep it as is or add it later
+        }
       } catch (e) {
-        console.log("No default model to auto-load.");
+        console.log("No model to auto-load on boot.");
       }
     };
     autoLoad();
@@ -86,7 +110,6 @@ function App() {
       aiProcessing.current = true;
       
       const timer = setTimeout(async () => {
-        const config = { epsilon: 0, rewards: {} } as any;
         const p1History = [...history].filter(m => m.player === 1).reverse();
         const p2History = [...history].filter(m => m.player === 2).reverse();
         const lastMove = history.length > 0 ? history[history.length - 1].coord : { q: 0, r: 0 };
@@ -102,7 +125,9 @@ function App() {
 
         try {
           // 1-Step Look-Ahead (Shallow MCTS)
-          const topMoves = await sharedTrainerRef.current!.getTopMoves(encodeState(board, currentPlayer, foci, focalRadii, turn, 100), 5);
+          const topMoves = await sharedTrainerRef.current!.getTopMoves(
+            encodeState(board, currentPlayer, foci, focalRadii, turn, 100), 5
+          );
 
           let bestMove: Coord | null = null;
           let bestMoveScore = -Infinity;
@@ -112,28 +137,18 @@ function App() {
             const key = coordToString(candidate);
             if (board.has(key)) continue;
 
-            // Simulate making this move
             const simBoard = new Map(board);
             simBoard.set(key, currentPlayer);
 
-            // Check if it wins immediately
             if (checkWin(simBoard, candidate.q, candidate.r, currentPlayer)) {
               bestMove = candidate;
-              break; // Instant win, take it
+              break;
             }
 
-            // Simulate opponent's response
-            let score = option.prob; // Base score is the initial probability
+            let score = option.prob;
             const otherPlayer = currentPlayer === 1 ? 2 : 1;
-
-            // Look for opponent's immediate threats
-            // A simple check: does opponent have a 5-in-a-row now?
-            // Since we can't easily simulate all opponent moves, we penalize if they had a threat we didn't block
-            // The model's policy should handle this, but explicit lookahead helps.
             const enemyMax = getMaxLine(board, candidate.q, candidate.r, otherPlayer);
-            if (enemyMax >= 4) {
-              score += 1.0; // High bonus for blocking a major threat
-            }
+            if (enemyMax >= 4) score += 1.0;
 
             if (score > bestMoveScore) {
               bestMoveScore = score;
@@ -143,17 +158,17 @@ function App() {
 
           if (bestMove) {
             makeMove(bestMove.q, bestMove.r);
-
-            // For the second move, we just rely on the base model without deep lookahead for speed
             if (board.size > 0) {
               await new Promise(resolve => setTimeout(resolve, 400));
               const newBoard = new Map(board);
               newBoard.set(coordToString(bestMove), currentPlayer);
-
               const newFoci = [...foci];
               newFoci[0] = bestMove;
-
-              const result2 = await sharedTrainerRef.current!.playTurn(newBoard, currentPlayer, newFoci, focalRadii, config, turn, 100);
+              
+              const result2 = await sharedTrainerRef.current!.playTurn(
+                newBoard, currentPlayer, newFoci, focalRadii, 
+                { epsilon: 0 } as any, turn, 100
+              );
               if (result2.moves.length > 0) {
                 makeMove(result2.moves[0].q, result2.moves[0].r);
               }
@@ -164,8 +179,7 @@ function App() {
         } finally {
           aiProcessing.current = false;
         }
-        }, 1000);
-
+      }, 1000);
       return () => clearTimeout(timer);
     }
   }, [gameMode, gameStarted, currentPlayer, userPlayer, board, winner, turn, focalRadii, history, makeMove, isTraining]);
@@ -304,6 +318,14 @@ function App() {
           trainerRef={sharedTrainerRef}
           modelRef={sharedModelRef}
           setIsAiLoaded={setIsAiLoaded}
+          maxTurns={maxTurns}
+          setMaxTurns={setMaxTurns}
+          batchSize={batchSize}
+          setBatchSize={setBatchSize}
+          epsilon={epsilon}
+          setEpsilon={setEpsilon}
+          parallelGames={parallelGames}
+          setParallelGames={setParallelGames}
         />
       )}
       {activeTab === 'architecture' && (
