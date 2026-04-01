@@ -8,7 +8,7 @@ import { ModelConfig } from './components/ModelConfig';
 import { Settings } from './components/Settings';
 import { MoveLog } from './components/MoveLog';
 import { Trainer } from './ai/trainer';
-import { decodeMove } from './ai/encoder';
+import { encodeState, decodeMove } from './ai/encoder';
 import { checkWin, getMaxLine } from './gameLogic';
 import { coordToString } from './types';
 import type { NotationType, LogPosition, Theme, Player, Coord } from './types';
