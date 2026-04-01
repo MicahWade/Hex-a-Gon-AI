@@ -7,7 +7,7 @@ import type { BoardState, Coord, Player } from '../types';
 import { getVaultMetadata, loadModelFromVault, deleteModelFromVault } from '../ai/modelVault';
 import type { ModelMetadata } from '../ai/modelVault';
 import { encodeState, coordToIndex, decodeMove } from '../ai/encoder';
-import { getMaxLine, rotateBoard, rotateCoord } from '../gameLogic';
+import { getMaxLine, rotateBoard, rotateCoord, getTacticalMove } from '../gameLogic';
 import { coordToString } from '../types';
 
 interface Props {
@@ -215,21 +215,54 @@ export const AITraining: React.FC<Props> = ({
       
       const gameHistory: { boardBefore: BoardState, foci: Coord[], move: Coord, player: Player, turn: number, tacticalBonus: number, illegalActions: number[] }[] = [];
 
-      const isRandomOpponent = Math.random() < 0.2;
-      const randomPlayerId = isRandomOpponent ? (Math.random() > 0.5 ? 1 : 2) : 0;
+      // Opponent Type Selection
+      // 70% Self-Play, 15% Random Bot, 15% Tactical Bot
+      const randVal = Math.random();
+      const botType: 'NONE' | 'RANDOM' | 'TACTICAL' = randVal < 0.15 ? 'RANDOM' : (randVal < 0.30 ? 'TACTICAL' : 'NONE');
+      const botPlayerId = botType !== 'NONE' ? (Math.random() > 0.5 ? 1 : 2) : 0;
 
       while (!winner && turns < maxTurns && active && isTraining) {
-        // PERFORMANCE: Yield to UI every 10 turns
         if (turns % 10 === 0) await tf.nextFrame();
 
         const boardBefore = new Map(board);
         const currentFoci = [...foci];
-        const currentEpsilon = (currentPlayer === randomPlayerId) ? 1.0 : epsilon;
-        
-        const result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon: currentEpsilon }, turns, maxTurns);
+        let result: { board: BoardState; moves: Coord[]; winner: Player | null; actionIndices: number[] };
+
+        if (currentPlayer === botPlayerId) {
+          // Bot Turn
+          const moves: Coord[] = [];
+          let currentBoard = new Map(board);
+          const moveCount = (turns === 0 && currentPlayer === 1) ? 1 : 2;
+
+          for (let m = 0; m < moveCount; m++) {
+            let move: Coord;
+            if (botType === 'RANDOM') {
+              const allMoves = await trainerRef.current!.getTopMoves(encodeState(currentBoard, currentPlayer, foci, focalRadii, turns, maxTurns), 100);
+              move = decodeMove(allMoves[Math.floor(Math.random() * allMoves.length)].idx, foci, focalRadii);
+            } else {
+              // TACTICAL BOT: 50% block chance as requested
+              move = getTacticalMove(currentBoard, currentPlayer, 0.5);
+            }
+            
+            const key = coordToString(move);
+            if (!currentBoard.has(key)) {
+              currentBoard.set(key, currentPlayer);
+              moves.push(move);
+              if (checkWin(currentBoard, move.q, move.r, currentPlayer)) {
+                winner = currentPlayer;
+                break;
+              }
+            }
+          }
+          // Bots don't have "action indices" from the model
+          result = { board: currentBoard, moves, winner, actionIndices: [] };
+        } else {
+          // Standard AI Turn
+          result = await trainerRef.current!.playTurn(board, currentPlayer, foci, focalRadii, { ...config, epsilon }, turns, maxTurns);
+        }
         
         const illegalActions: number[] = [];
-        if (currentPlayer !== randomPlayerId && board.size > 0) {
+        if (currentPlayer !== botPlayerId && board.size > 0) {
           const topOptions = await trainerRef.current!.getTopMoves(encodeState(board, currentPlayer, foci, focalRadii, turns, maxTurns), 3);
           topOptions.forEach(opt => {
             if (board.has(coordToString(decodeMove(opt.idx, foci, focalRadii)))) {
@@ -313,7 +346,7 @@ export const AITraining: React.FC<Props> = ({
         }
       }
 
-      return { winner, turns, isRandomOpponent };
+      return { winner, turns, botType };
     };
 
     const runCycle = async () => {
@@ -322,6 +355,13 @@ export const AITraining: React.FC<Props> = ({
         const results = await Promise.all(games);
         const l = await trainerRef.current!.trainBatch(batchSize);
         
+        results.forEach(res => {
+          if (res.winner) {
+            const opponentStr = res.botType === 'NONE' ? 'Self' : (res.botType === 'RANDOM' ? 'Random' : 'Tactical');
+            addLog(`[Game] P${res.winner} won in ${res.turns} turns (vs ${opponentStr}).`);
+          }
+        });
+
         pendingGen.current += results.length;
         if (l) pendingLoss.current = l;
 
