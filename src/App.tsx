@@ -27,7 +27,7 @@ function App() {
   const [p1Color, setP1Color] = useState('#3498db');
   const [p2Color, setP2Color] = useState('#e74c3c');
   const [isTraining, setIsTraining] = useState(false);
-  const [networkArchitecture, setNetworkArchitecture] = useState<number[]>([1536, 1536, 2048]);
+  const [networkArchitecture, setNetworkArchitecture] = useState<number[]>([1536, 1536, 1536, 2049, 2600]);
   const [focalRadii, setFocalRadii] = useState({ global: 14, self: 8, memory: 6 });
   const [generations, setGenerations] = useState(0);
   const [loss, setLoss] = useState(0);
