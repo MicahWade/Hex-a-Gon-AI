@@ -12,15 +12,29 @@ Hex-A-Gon is a high-performance, reinforcement learning environment for an infin
 - **Shallow MCTS Look-Ahead**: AI "thinks" before it moves, simulating future outcomes to avoid obvious traps.
 - **Dynamic Learning Rate**: Exponentially decaying optimizer for fast initial learning and high-precision late-game polishing.
 
+## 🧠 Neural Input Architecture
+
+The AI perceives the world through a specialized **Multi-Focal Vision** system, using a total of **16 Metadata Nodes** for spatial and situational awareness:
+
+### 1. Localization (12 Nodes)
+Because the hexagonal grid is infinite, the AI uses 6 "Focal Points" to track activity. Each point provides its **Axial Q & R** coordinates to the network.
+- **Global & Self Foci**: Tracks the center of the board and the AI's most recent move.
+- **Tactical Memory Foci**: 4 dedicated points that "pin" historical battlegrounds, preventing the AI from forgetting distant threats while it explores new areas.
+
+### 2. Contextual Awareness (4 Nodes)
+- **Team ID**: Tells the AI if it is playing as P1 or P2.
+- **The Bias (1.0)**: Provides a base activation signal for the network layers.
+- **The Ground (0.0)**: A reference signal for weight normalization.
+- **The Game Clock**: A normalized turn counter (0.0 to 1.0) that allows the AI to evolve its strategy from early-game expansion to late-game precision.
+
 ## 🛠️ Tech Stack
 
 - **Frontend**: React 19 (Vite)
 - **Intelligence**: TensorFlow.js (Deep Q-Learning)
-- **Persistence**: IndexedDB for local model storage
+- **Acceleration**: WebGPU (Primary) / WebGL (Fallback)
+- **Multithreading**: Dedicated Web Workers for off-thread board math
 
 ## 📥 Local Setup & Installation
-
-Follow these steps to run the environment on your own machine:
 
 1.  **Clone the Repository**:
     ```bash
@@ -29,7 +43,6 @@ Follow these steps to run the environment on your own machine:
     ```
 
 2.  **Install Dependencies**:
-    Make sure you have [Node.js](https://nodejs.org/) installed.
     ```bash
     npm install
     ```
@@ -38,21 +51,14 @@ Follow these steps to run the environment on your own machine:
     ```bash
     npm run dev
     ```
-    The application will be available at `http://localhost:5173`.
-
-4.  **Build for Production**:
-    ```bash
-    npm run build
-    ```
 
 ## 🎮 How to Train Your First AI
 
-1.  Navigate to the **Architecture** tab to set your brain size (Default: 1536x1536x2048).
+1.  Navigate to the **Architecture** tab to set your brain size (Default: Massive 5-layer config).
 2.  Go to the **AI Training Lab** tab.
 3.  Type a name for your model and click **Initialize New Model**.
-4.  Adjust the **Parallel Games** setting based on your hardware (16-32 is recommended for modern GPUs).
-5.  Click **Start Training** and watch the "Gen" count rise!
-6.  Once you're happy with the progress, click **Save** and head to the **Play Game** tab to challenge your creation in **PvAI** mode.
+4.  Adjust the **Parallel Games** (16-32 recommended).
+5.  Click **Start Training** and watch the "Exploration Pulse" optimize your learning strategy.
 
 ## 📜 License
 
