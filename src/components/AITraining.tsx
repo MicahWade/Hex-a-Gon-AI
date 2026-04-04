@@ -212,6 +212,18 @@ export const AITraining: React.FC<Props> = ({
     }
   };
 
+  const handleExportMemory = () => {
+    if (!trainerRef.current) return;
+    const memory = trainerRef.current.getMemory();
+    const blob = new Blob([JSON.stringify(memory)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `memory_${Date.now()}.json`;
+    a.click();
+    addLog(`[System] Exported ${memory.length} experiences.`);
+  };
+
   const handleDelete = async (name: string) => {
     if (confirm(`Delete model '${name}'?`)) {
       await deleteModelFromVault(name);
@@ -411,9 +423,10 @@ export const AITraining: React.FC<Props> = ({
           </div>
         ))}
       </div>
-      <div style={{display: 'flex', gap: '10px', marginTop: 'auto'}}>
-        <button className="add-layer-btn" style={{flex: 1}} onClick={handleCreateNew}>Initialize New Model</button>
-        <button className="add-layer-btn" style={{flex: 1, backgroundColor: '#9b59b6'}} onClick={handleImportPython}>Sync Python Model</button>
+      <div style={{display: 'flex', gap: '10px', marginTop: 'auto', flexWrap: 'wrap'}}>
+        <button className="add-layer-btn" style={{flex: '1 1 45%'}} onClick={handleCreateNew}>Initialize New Model</button>
+        <button className="add-layer-btn" style={{flex: '1 1 45%', backgroundColor: '#9b59b6'}} onClick={handleImportPython}>Sync Python Model</button>
+        <button className="add-layer-btn" style={{flex: '1 1 100%', backgroundColor: '#27ae60'}} onClick={handleExportMemory}>Export Training Data (.json)</button>
       </div>
     </section>
   ), [vault, currentModelName]);

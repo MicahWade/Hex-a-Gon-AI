@@ -187,6 +187,8 @@ export class Trainer {
 
   clearMemory() { this.memory = []; }
 
+  getMemory() { return this.memory; }
+
   addToMemory(state: number[], action: number, reward: number, nextState: number[] | null, priority: number = 1.0) {
     const expectedSize = (this.model.inputs[0].shape[1] as number);
     if (state.length !== expectedSize) return;
