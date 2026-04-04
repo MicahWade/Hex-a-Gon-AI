@@ -26,16 +26,15 @@ BATCH_SIZE = 256    # High batch size maxes out GPU utilization
 
 def build_massive_model():
     """
-    Builds the user-requested 10 layers of 5000 neurons.
-    WARNING: This creates ~250 Million Parameters and requires ~1.5GB to 3GB of VRAM.
+    Builds the user-requested 7 layers of 3500 neurons.
     """
-    print("\n🧠 Building Massive 10x5000 Dueling DQN Model...")
+    print("\n🧠 Building Massive 7x3500 Dueling DQN Model...")
     inputs = tf.keras.Input(shape=(INPUT_NODES,))
     x = inputs
     
-    # The 10 Dense Layers of 5000
-    for i in range(10):
-        x = tf.keras.layers.Dense(5000, activation='relu', name=f'dense_{i}')(x)
+    # The 7 Dense Layers of 3500
+    for i in range(7):
+        x = tf.keras.layers.Dense(3500, activation='relu', name=f'dense_{i}')(x)
         
     # Dueling Network separation
     value = tf.keras.layers.Dense(1, activation='linear', name='value')(x)

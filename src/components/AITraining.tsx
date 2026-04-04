@@ -193,7 +193,7 @@ export const AITraining: React.FC<Props> = ({
       const { inputNodes, outputNodes } = getIOConfig();
       const meta: ModelMetadata = {
         name, timestamp: Date.now(), inputNodes, outputNodes, 
-        hiddenLayers: [5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000],
+        hiddenLayers: [3500, 3500, 3500, 3500, 3500, 3500, 3500],
         focalRadii: { ...focalRadii }, generation: 0, maxTurns, batchSize, epsilon,
         parallelGames: 1
       };
