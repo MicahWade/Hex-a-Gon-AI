@@ -69,9 +69,6 @@ If you want to train massive models (like the 10-layer 5000-neuron default) and 
     python train.py
     ```
 
-**Note on "Building it Naturally"**: 
-By default, the script creates a massive 10x5000 network. If you want the script to "naturally" search for the optimal architecture size without blowing up your VRAM, simply open `train.py` and change `USE_NATURAL_SEARCH = True` at the bottom of the file.
-
 ## 🎮 How to Train Your First AI
 
 1.  Navigate to the **Architecture** tab to set your brain size (Default: Massive 5-layer config).
