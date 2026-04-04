@@ -227,11 +227,17 @@ export const AITraining: React.FC<Props> = ({
       trainerRef.current!.setLearningRate(currentLR);
       
       const stats = bucketStatsRef.current;
-      const totalWeight = stats.reduce((a, b) => a + b, 0);
+      const rawTotal = stats.reduce((a, b) => a + b, 0);
+      
+      // Calculate weights with a 2.5% minimum floor
+      const minWeight = rawTotal * 0.025; 
+      const flooredStats = stats.map(s => Math.max(s, minWeight));
+      const totalWeight = flooredStats.reduce((a, b) => a + b, 0);
+
       let r = Math.random() * totalWeight;
       let bucketIdx = 0;
-      for (let i = 0; i < stats.length; i++) {
-        r -= stats[i];
+      for (let i = 0; i < flooredStats.length; i++) {
+        r -= flooredStats[i];
         if (r <= 0) { bucketIdx = i; break; }
       }
       const chosenEpsilon = EPSILON_BUCKETS[bucketIdx];
@@ -417,15 +423,23 @@ export const AITraining: React.FC<Props> = ({
           <section className="reward-config card full-height-card">
             <h3>Exploration Pulse</h3>
             <div className="epsilon-pulse-grid" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px'}}>
-              {EPSILON_BUCKETS.map((val, i) => (
-                <div key={val} className="pulse-item" style={{background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)'}}>
-                  <div style={{fontSize: '10px', color: 'rgba(255,255,255,0.5)'}}>{BUCKET_LABELS[i]}</div>
-                  <div style={{fontSize: '14px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between'}}>
-                    <span>{val}</span>
-                    <span style={{color: '#2ecc71'}}>{Math.round((visibleBucketStats[i] / visibleBucketStats.reduce((a,b)=>a+b,0)) * 100)}%</span>
+              {EPSILON_BUCKETS.map((val, i) => {
+                const rawTotal = visibleBucketStats.reduce((a,b)=>a+b,0);
+                const minWeight = rawTotal * 0.025;
+                const flooredStats = visibleBucketStats.map(s => Math.max(s, minWeight));
+                const totalWithFloor = flooredStats.reduce((a,b)=>a+b,0);
+                const percentage = Math.round((flooredStats[i] / totalWithFloor) * 100);
+                
+                return (
+                  <div key={val} className="pulse-item" style={{background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)'}}>
+                    <div style={{fontSize: '10px', color: 'rgba(255,255,255,0.5)'}}>{BUCKET_LABELS[i]}</div>
+                    <div style={{fontSize: '14px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between'}}>
+                      <span>{val}</span>
+                      <span style={{color: '#2ecc71'}}>{percentage}%</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <h3>Reward System</h3>
             <div className="reward-grid">
