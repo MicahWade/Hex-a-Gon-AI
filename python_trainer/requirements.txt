@@ -1,0 +1,24 @@
+# Base TensorFlow (CPU)
+tensorflow==2.15.0
+
+# ========================================================
+# 🛑 AMD GPU INSTALLATION INSTRUCTIONS 🛑
+# Choose the correct package below based on your OS.
+# DO NOT install all of them.
+# ========================================================
+
+# 🐧 Linux (AMD GPU with ROCm):
+# Uncomment the line below and run: pip install -r requirements.txt
+# tensorflow-rocm==2.15.0
+
+# 🪟 Windows (AMD GPU via DirectX 12):
+# Uncomment the line below and run: pip install -r requirements.txt
+# tensorflow-directml-plugin
+
+# 🍎 Mac (M1/M2/M3):
+# Uncomment the line below and run: pip install -r requirements.txt
+# tensorflow-metal
+
+# --- Additional Packages ---
+numpy
+keras-tuner

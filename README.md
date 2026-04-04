@@ -52,6 +52,26 @@ Because the hexagonal grid is infinite, the AI uses 6 "Focal Points" to track ac
     npm run dev
     ```
 
+## 🐍 Advanced: Pure Python Training (AMD GPU Support)
+
+If you want to train massive models (like the 10-layer 5000-neuron default) and max out your dedicated graphics card, you can use the included Python training script. This script bypasses the browser and trains directly on your hardware.
+
+1.  Navigate to the Python trainer folder:
+    ```bash
+    cd python_trainer
+    ```
+2.  Install the required dependencies (Read `requirements.txt` carefully to install the correct AMD GPU package for your OS, such as `tensorflow-directml-plugin` or `tensorflow-rocm`):
+    ```bash
+    pip install -r requirements.txt
+    ```
+3.  Run the training loop:
+    ```bash
+    python train.py
+    ```
+
+**Note on "Building it Naturally"**: 
+By default, the script creates a massive 10x5000 network. If you want the script to "naturally" search for the optimal architecture size without blowing up your VRAM, simply open `train.py` and change `USE_NATURAL_SEARCH = True` at the bottom of the file.
+
 ## 🎮 How to Train Your First AI
 
 1.  Navigate to the **Architecture** tab to set your brain size (Default: Massive 5-layer config).
