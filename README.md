@@ -54,24 +54,42 @@ Because the hexagonal grid is infinite, the AI uses 6 "Focal Points" to track ac
 
 ## 🐍 Advanced: Pure Python Training (AMD GPU Support)
 
-If you want to train massive models (like the 10-layer 5000-neuron default) and max out your dedicated graphics card, you can use the included Python training script. This script bypasses the browser and trains directly on your hardware.
+To train massive models (Default: 7x3500) and max out your dedicated AMD graphics card, use the included Python training script. 
 
-1.  Navigate to the Python trainer folder:
+### Setup using `.venv`:
+
+1.  Navigate to the folder:
     ```bash
     cd python_trainer
     ```
-2.  Install the required dependencies (Read `requirements.txt` carefully to install the correct AMD GPU package for your OS, such as `tensorflow-directml-plugin` or `tensorflow-rocm`):
+2.  Create and activate a virtual environment:
+    ```bash
+    python -m venv .venv
+    # On Windows:
+    .venv\Scripts\activate
+    # On Linux/Mac:
+    source .venv/bin/activate
+    ```
+3.  Install dependencies:
     ```bash
     pip install -r requirements.txt
+    pip install tensorflowjs  # Required for browser sync
     ```
-3.  Run the training loop:
+4.  Run the training factory:
     ```bash
     python train.py
     ```
 
+### Syncing to the Browser:
+Once training has generated a `hex_model.keras` file, convert it for the web:
+```bash
+tensorflowjs_converter --input_format=keras hex_model.keras ../Hex-A-Gon/public/python_model
+```
+Then, open the website, go to the **AI Training Lab**, and click **Sync Python Model**.
+
 ## 🎮 How to Train Your First AI
 
-1.  Navigate to the **Architecture** tab to set your brain size (Default: Massive 5-layer config).
+1.  Navigate to the **Architecture** tab to set your brain size (Default: Massive 7x3500 config).
 2.  Go to the **AI Training Lab** tab.
 3.  Type a name for your model and click **Initialize New Model**.
 4.  Adjust the **Parallel Games** (16-32 recommended).
