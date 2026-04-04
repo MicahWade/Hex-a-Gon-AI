@@ -184,6 +184,34 @@ export const AITraining: React.FC<Props> = ({
     } catch (e) { addLog(`[Error] Failed to load.`); }
   };
 
+  const handleImportPython = async () => {
+    addLog("[System] Attempting to sync Python model...");
+    try {
+      const model = await tf.loadLayersModel('/python_model/model.json');
+      // Wrap in vault-compatible metadata
+      const name = "python-imported-brain";
+      const { inputNodes, outputNodes } = getIOConfig();
+      const meta: ModelMetadata = {
+        name, timestamp: Date.now(), inputNodes, outputNodes, 
+        hiddenLayers: [5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000],
+        focalRadii: { ...focalRadii }, generation: 0, maxTurns, batchSize, epsilon,
+        parallelGames: 1
+      };
+      
+      // Save to IndexedDB so it appears in the list
+      await model.save(`indexeddb://${name}`);
+      const vaultData = getVaultMetadata();
+      const index = vaultData.findIndex(m => m.name === name);
+      if (index !== -1) vaultData[index] = meta; else vaultData.push(meta);
+      localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
+      
+      setVault(getVaultMetadata());
+      addLog("[System] Python brain synced to Vault!");
+    } catch (e) {
+      addLog("[Error] No model found in public/python_model/ folder.");
+    }
+  };
+
   const handleDelete = async (name: string) => {
     if (confirm(`Delete model '${name}'?`)) {
       await deleteModelFromVault(name);
@@ -383,7 +411,10 @@ export const AITraining: React.FC<Props> = ({
           </div>
         ))}
       </div>
-      <button className="add-layer-btn" style={{marginTop: 'auto'}} onClick={handleCreateNew}>Initialize New Model</button>
+      <div style={{display: 'flex', gap: '10px', marginTop: 'auto'}}>
+        <button className="add-layer-btn" style={{flex: 1}} onClick={handleCreateNew}>Initialize New Model</button>
+        <button className="add-layer-btn" style={{flex: 1, backgroundColor: '#9b59b6'}} onClick={handleImportPython}>Sync Python Model</button>
+      </div>
     </section>
   ), [vault, currentModelName]);
 
