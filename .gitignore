@@ -31,3 +31,4 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+python_trainer/hex_brain.pt
