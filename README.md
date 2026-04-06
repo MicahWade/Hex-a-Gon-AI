@@ -2,11 +2,46 @@
 
 Hex-A-Gon is a high-performance, reinforcement learning environment for an infinite hexagonal connection game. This project features a standardized **7x3500 Dueling DQN** architecture that can be trained either directly in your browser or via a high-speed Python factory.
 
+## 🌐 Running the Website Locally
+
+Follow these steps to host the Hex-A-Gon game and AI Lab on your own machine.
+
+### 1. Prerequisites
+Ensure you have [Node.js](https://nodejs.org/) installed (Version 18 or higher is recommended).
+
+### 2. Installation
+```bash
+# Clone the repository
+git clone https://github.com/MicahWade/Hex-a-Gon-AI.git
+
+# Navigate to the project folder
+cd Hex-a-Gon-AI/Hex-A-Gon
+
+# Install dependencies
+npm install
+```
+
+### 3. Start Development Server
+```bash
+npm run dev
+```
+Once the server starts, open your browser and go to:
+👉 **`http://localhost:5173`**
+
+### 4. Production Build (Optional)
+If you want to create a fast, optimized version of the site:
+```bash
+npm run build
+npm run preview
+```
+
+---
+
 ## 🚀 Training Options
 
 ### Option 1: Zero-Install (Web Browser)
 The easiest way to start. Uses **WebGPU** or **WebGL** to train directly on your screen.
-1.  Open the website.
+1.  Open the website in your browser.
 2.  Go to the **AI Training Lab** tab.
 3.  Click **Initialize New Model** and then **Start Training**.
 4.  *Works on: All Modern Browsers (Chrome/Edge/Firefox).*
@@ -56,7 +91,7 @@ To play against your GPU-trained brain in the browser:
     python export_to_web.py
     ```
 2.  **Sync to Browser**:
-    Open the website, go to the **AI Training** tab, and click **Sync Python Model**.
+    Open the website, go to the **AI Training Lab**, and click **Sync Python Model**.
 3.  **Play**:
     Load the `python-imported-brain` in the Model Vault.
 
