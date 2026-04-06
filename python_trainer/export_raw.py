@@ -21,7 +21,7 @@ def export_raw():
     pt_state = checkpoint['model_state_dict'] if (isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint) else checkpoint
 
     # 2. Setup Output Directory
-    output_dir = "../Hex-A-Gon/public/python_model"
+    output_dir = "../public/python_model"
     if os.path.exists(output_dir): shutil.rmtree(output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
