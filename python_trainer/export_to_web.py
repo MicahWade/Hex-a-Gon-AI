@@ -1,20 +1,28 @@
 import numpy as np
-# Compatibility Patch for newer NumPy versions and older tensorflowjs
+# MUST patch before any other imports
+import builtins
 if not hasattr(np, 'object'):
-    np.object = object
+    np.object = builtins.object
 if not hasattr(np, 'bool'):
-    np.bool = bool
+    np.bool = builtins.bool
 if not hasattr(np, 'float'):
-    np.float = float
+    np.float = builtins.float
 
 import torch
 import torch.nn as nn
 import os
-import subprocess
 import shutil
+import sys
 
 # Import the model structure from train.py
 from train import DuelingDQN, INPUT_NODES, OUTPUT_NODES
+
+# Import the converter's main function directly
+try:
+    from tensorflowjs.converters.converter import pip_main as tfjs_converter
+except ImportError:
+    print("❌ Error: tensorflowjs not installed. Run: pip install tensorflowjs")
+    sys.exit(1)
 
 def export():
     print("📦 Starting PyTorch to Web Conversion...")
@@ -30,13 +38,12 @@ def export():
     print(f"📂 Loading weights from {checkpoint_path}...")
     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     
-    # Handle both package and raw formats
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
         print(f"✅ Loaded Checkpoint (Gen {checkpoint.get('gen', 'Unknown')})")
     else:
         model.load_state_dict(checkpoint)
-        print("✅ Loaded Raw Weights (Legacy format)")
+        print("✅ Loaded Raw Weights")
     
     model.eval()
 
@@ -59,7 +66,6 @@ def export():
     print(f"✅ Created {onnx_path}")
 
     # 3. Convert ONNX to TensorFlow.js
-    print("🛠️  Converting to TensorFlow.js format...")
     saved_model_dir = "temp_saved_model"
     tfjs_output_dir = "../Hex-A-Gon/public/python_model"
 
@@ -68,8 +74,9 @@ def export():
         if os.path.exists(saved_model_dir): shutil.rmtree(saved_model_dir)
         if os.path.exists(tfjs_output_dir): shutil.rmtree(tfjs_output_dir)
         
-        # ONNX -> SavedModel
+        # ONNX -> SavedModel (We still use subprocess for onnx2tf as it is a pure CLI tool)
         print("  > Phase A: ONNX to SavedModel...")
+        import subprocess
         subprocess.run([
             "onnx2tf",
             "-i", onnx_path,
@@ -77,14 +84,19 @@ def export():
             "--non_verbose"
         ], check=True)
 
-        # SavedModel -> TFJS
+        # SavedModel -> TFJS (Running INTERNALLY to use our NumPy patch)
         print("  > Phase B: SavedModel to TFJS...")
-        subprocess.run([
-            "tensorflowjs_converter",
-            "--input_format=tf_saved_model",
+        
+        # Manually construct the CLI arguments for the internal function
+        sys.argv = [
+            'tensorflowjs_converter',
+            '--input_format=tf_saved_model',
             saved_model_dir,
             tfjs_output_dir
-        ], check=True)
+        ]
+        
+        # This calls the converter code while respecting our monkey-patched NumPy
+        tfjs_converter()
 
         print(f"\n✨ ALL DONE! ✨")
         print(f"Model saved to: {tfjs_output_dir}")
@@ -95,6 +107,7 @@ def export():
     finally:
         # Cleanup
         if os.path.exists(saved_model_dir): shutil.rmtree(saved_model_dir)
+        if os.path.exists(onnx_path): os.remove(onnx_path)
 
 if __name__ == "__main__":
     export()
