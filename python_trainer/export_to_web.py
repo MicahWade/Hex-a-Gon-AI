@@ -4,33 +4,20 @@ import numpy as np
 import builtins
 
 # 1. THE "ULTIMATE" LEGACY PATCH
-# We create a fake module structure to satisfy the old tensorflowjs code
 try:
-    # Fix NumPy
     if not hasattr(np, 'object'): np.object = builtins.object
     if not hasattr(np, 'bool'): np.bool = builtins.bool
     if not hasattr(np, 'float'): np.float = builtins.float
-
-    # Create a dummy estimator structure
     mock_estimator = types.ModuleType('estimator')
-    mock_estimator.Exporter = object # Provide a base class for Hub to inherit from
-    
-    # Inject it everywhere the converter might look
+    mock_estimator.Exporter = object
     sys.modules['tensorflow.estimator'] = mock_estimator
     sys.modules['tensorflow.compat.v1.estimator'] = mock_estimator
-    
     import tensorflow as tf
-    # Force bind to the TF module
     tf.estimator = mock_estimator
     if not hasattr(tf, 'compat'): tf.compat = types.ModuleType('compat')
     if not hasattr(tf.compat, 'v1'): tf.compat.v1 = types.ModuleType('v1')
     tf.compat.v1.estimator = mock_estimator
-
-    # 2. HIDE TENSORFLOW_HUB
-    # Hub is the one crashing. We'll replace it with a blank module 
-    # because our simple model doesn't actually need it.
     sys.modules['tensorflow_hub'] = types.ModuleType('tensorflow_hub')
-
 except Exception as e:
     print(f"⚠️ Patching warning: {e}")
 
@@ -38,6 +25,7 @@ import torch
 import torch.nn as nn
 import os
 import shutil
+import subprocess
 
 # Import the model structure from train.py
 from train import DuelingDQN, INPUT_NODES, OUTPUT_NODES
@@ -73,7 +61,7 @@ def export():
     dummy_input = torch.randn(1, INPUT_NODES)
     torch.onnx.export(model, dummy_input, onnx_path, opset_version=12)
 
-    # 3. Convert ONNX to TensorFlow.js
+    # 3. Convert ONNX to SavedModel (Intermediate)
     saved_model_dir = "temp_saved_model"
     tfjs_output_dir = "../Hex-A-Gon/public/python_model"
 
@@ -81,20 +69,49 @@ def export():
         if os.path.exists(saved_model_dir): shutil.rmtree(saved_model_dir)
         if os.path.exists(tfjs_output_dir): shutil.rmtree(tfjs_output_dir)
         
-        # ONNX -> SavedModel
         print("  > Phase A: ONNX to SavedModel...")
-        import subprocess
-        subprocess.run(["onnx2tf", "-i", onnx_path, "-o", saved_model_dir, "--non_verbose"], check=True)
+        # Force SavedModel output explicitly
+        subprocess.run([
+            "onnx2tf", 
+            "-i", onnx_path, 
+            "-o", saved_model_dir, 
+            "--non_verbose"
+        ], check=True)
 
-        # SavedModel -> TFJS
+        # Verify SavedModel existence
+        # onnx2tf sometimes puts it in a subfolder or creates the file directly
+        if not os.path.exists(os.path.join(saved_model_dir, "saved_model.pb")):
+            # Look for subfolders (common in newer onnx2tf)
+            found = False
+            for root, dirs, files in os.walk(saved_model_dir):
+                if "saved_model.pb" in files:
+                    print(f"  🔍 Found SavedModel in subfolder: {root}")
+                    # Move everything up to the main temp_saved_model dir
+                    for f in files: shutil.move(os.path.join(root, f), saved_model_dir)
+                    for d in dirs: shutil.move(os.path.join(root, d), saved_model_dir)
+                    found = True
+                    break
+            if not found:
+                print("❌ Error: onnx2tf failed to create a valid SavedModel directory.")
+                return
+
+        # 4. Convert SavedModel to TFJS (Internal API)
         print("  > Phase B: SavedModel to TFJS...")
-        sys.argv = ['tensorflowjs_converter', '--input_format=tf_saved_model', saved_model_dir, tfjs_output_dir]
+        sys.argv = [
+            'tensorflowjs_converter', 
+            '--input_format=tf_saved_model', 
+            saved_model_dir, 
+            tfjs_output_dir
+        ]
         tfjs_converter()
 
         print(f"\n✨ ALL DONE! Model saved to: {tfjs_output_dir}")
+        print("Action: Go to the website and click 'Sync Python Model'.")
+
     except Exception as e:
         print(f"\n❌ Conversion Error: {e}")
     finally:
+        # Cleanup
         if os.path.exists(saved_model_dir): shutil.rmtree(saved_model_dir)
         if os.path.exists(onnx_path): os.remove(onnx_path)
 
