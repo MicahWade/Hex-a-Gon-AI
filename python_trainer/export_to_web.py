@@ -1,3 +1,12 @@
+import numpy as np
+# Compatibility Patch for newer NumPy versions and older tensorflowjs
+if not hasattr(np, 'object'):
+    np.object = object
+if not hasattr(np, 'bool'):
+    np.bool = bool
+if not hasattr(np, 'float'):
+    np.float = float
+
 import torch
 import torch.nn as nn
 import os
@@ -50,7 +59,6 @@ def export():
     print(f"✅ Created {onnx_path}")
 
     # 3. Convert ONNX to TensorFlow.js
-    # We use onnx2tf to go from ONNX -> SavedModel, then TFJS converter
     print("🛠️  Converting to TensorFlow.js format...")
     saved_model_dir = "temp_saved_model"
     tfjs_output_dir = "../Hex-A-Gon/public/python_model"
@@ -58,6 +66,7 @@ def export():
     try:
         # Clean up old temp dirs
         if os.path.exists(saved_model_dir): shutil.rmtree(saved_model_dir)
+        if os.path.exists(tfjs_output_dir): shutil.rmtree(tfjs_output_dir)
         
         # ONNX -> SavedModel
         print("  > Phase A: ONNX to SavedModel...")
@@ -83,8 +92,6 @@ def export():
 
     except Exception as e:
         print(f"\n❌ Conversion Error: {e}")
-        print("\nPrerequisites missing? Run:")
-        print("pip install onnx onnx2tf tensorflow-cpu tensorflowjs")
     finally:
         # Cleanup
         if os.path.exists(saved_model_dir): shutil.rmtree(saved_model_dir)
