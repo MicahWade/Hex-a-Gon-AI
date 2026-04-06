@@ -71,14 +71,15 @@ def export():
         if os.path.exists(tfjs_output_dir): shutil.rmtree(tfjs_output_dir)
         
         print("  > Phase A: ONNX to SavedModel...")
-        # Use explicit SavedModel and TF-Converter flags
+        # Force the 'tf_converter' backend to avoid the tflite-only 'flatbuffer_direct' path
         import subprocess
         subprocess.run([
             "onnx2tf", 
             "-i", onnx_path, 
             "-o", saved_model_dir, 
-            "-osd", # NEW: Force Output SavedModel
-            "-nlt", # Not generate TFLite
+            "-tb", "tf_converter", # NEW: Force TF backend
+            "-osd",                # Output SavedModel
+            "-nlt",                # Not generate TFLite
             "-v", "error"
         ], check=True)
 
