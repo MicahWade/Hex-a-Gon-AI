@@ -7,8 +7,7 @@ import random
 from logic import HexEngine, Encoder
 
 # ==========================================
-# 🛑 AMD GPU SETUP 🛑
-# pip install torch --index-url https://download.pytorch.org/whl/rocm6.0
+# 🚀 PyTorch Training Factory v2.0
 # ==========================================
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -21,6 +20,10 @@ BATCH_SIZE = 128
 MAX_TURNS = 250
 MEMORY_CAPACITY = 10000
 PARALLEL_GAMES = 4
+
+# ADAPTIVE EPSILON (Pulse)
+EPSILON_BUCKETS = [0.05, 0.15, 0.35, 0.65]
+BUCKET_LABELS = ['Conservative', 'Standard', 'Aggressive', 'Chaos']
 
 REWARDS = {
     'win': 5.0, 'draw': 0.5, 'line3': 0.05, 'line4': 0.15,
@@ -70,15 +73,13 @@ def play_game(model, encoder, epsilon, bot_type='NONE', bot_player_id=0):
     while winner is None and engine.turn < MAX_TURNS:
         moves_to_make = 1 if (engine.turn == 0 and curr_player == 1) else 2
         for _ in range(moves_to_make):
-            # Bot Move Logic
             if curr_player == bot_player_id:
                 if bot_type == 'RANDOM':
                     q, r = random.randint(-10, 10), random.randint(-10, 10)
                     while f"{q},{r}" in engine.board:
                         q, r = random.randint(-10, 10), random.randint(-10, 10)
-                    # We need an action index for training (approximate)
                     action_idx = 0 
-                else: # TACTICAL
+                else: 
                     q, r = engine.get_tactical_move(curr_player, 0.5)
                     action_idx = 0
             else:
@@ -96,13 +97,10 @@ def play_game(model, encoder, epsilon, bot_type='NONE', bot_player_id=0):
             if e_line == 4: t_bonus += REWARDS['block4']
             elif e_line == 5: t_bonus += REWARDS['block5']
             
-            # Record state BEFORE the move
             state_before = encoder.encode(engine, curr_player, MAX_TURNS)
-            
             is_valid = engine.make_move(q, r, curr_player)
             if not is_valid: t_bonus += REWARDS['illegal']
 
-            # Only record experiences for the main model (not the bots)
             if curr_player != bot_player_id:
                 history.append({'state': state_before, 'action': action_idx, 'player': curr_player, 't_bonus': t_bonus})
             
@@ -115,36 +113,75 @@ def play_game(model, encoder, epsilon, bot_type='NONE', bot_player_id=0):
 
 def train():
     model = DuelingDQN().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    
+    # METADATA INITIALIZATION
+    gen = 0
+    bucket_stats = [1, 1, 1, 1]
+    bot_win_rate = 1.0 # Start with 100% bot win rate (AI is a toddler)
     
     # RESUME LOGIC
     if os.path.exists('hex_brain.pt'):
-        print("📂 Found existing model 'hex_brain.pt'. Resuming training...")
-        model.load_state_dict(torch.load('hex_brain.pt', map_location=device))
+        print("📂 Loading saved checkpoint...")
+        checkpoint = torch.load('hex_brain.pt', map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        gen = checkpoint.get('gen', 0)
+        bucket_stats = checkpoint.get('bucket_stats', [1, 1, 1, 1])
+        bot_win_rate = checkpoint.get('bot_win_rate', 1.0)
+        print(f"✅ Resumed at Gen {gen} (Bot Win Rate: {bot_win_rate:.1%})")
     else:
-        print("🆕 No saved model found. Initializing new brain.")
+        print("🆕 Initializing new brain.")
 
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
     loss_fn = nn.MSELoss()
     encoder = Encoder()
     memory = []
+    bucket_history = [] # Last 1000 games
+    bot_match_history = [] # Last 100 games vs bots
     
-    print("\n🚀 Starting PyTorch Factory Loop (70/15/15 Split)...")
-    gen = 0
-    epsilon = 0.2
+    print("\n🚀 Starting Adaptive PyTorch Factory...")
     
     try:
         while True:
+            # DYNAMIC CURRICULUM: Scale bot frequency based on performance
+            # Range: 20% encounter rate if losing, 2.5% if winning
+            current_bot_freq = 0.025 + (bot_win_rate * (0.20 - 0.025))
+            
             for _ in range(PARALLEL_GAMES):
-                # Choose Opponent: 70% Self, 15% Random, 15% Tactical
+                # Adaptive Epsilon Selection (The Pulse)
+                total_w = sum(bucket_stats)
+                weights = [s/total_w for s in bucket_stats]
+                bucket_idx = np.random.choice(len(EPSILON_BUCKETS), p=weights)
+                chosen_epsilon = EPSILON_BUCKETS[bucket_idx]
+
+                # Choose Opponent
                 rand_val = random.random()
-                bot_type = 'RANDOM' if rand_val < 0.15 else ('TACTICAL' if rand_val < 0.30 else 'NONE')
-                bot_id = random.choice([1, 2]) if bot_type != 'NONE' else 0
+                is_bot_game = rand_val < current_bot_freq
+                bot_type = random.choice(['RANDOM', 'TACTICAL']) if is_bot_game else 'NONE'
+                bot_id = random.choice([1, 2]) if is_bot_game else 0
                 
-                game_hist, winner = play_game(model, encoder, epsilon, bot_type, bot_id)
+                game_hist, winner = play_game(model, encoder, chosen_epsilon, bot_type, bot_id)
                 
-                # Rewards
+                # Update Adaptive Stats
+                ai_won = (winner is not None and winner != bot_id)
+                if winner is not None:
+                    # Update Epsilon Pulse
+                    if ai_won:
+                        bucket_stats[bucket_idx] += 1
+                        bucket_history.append({'idx': bucket_idx, 'win': True})
+                    if len(bucket_history) > 1000:
+                        old = bucket_history.pop(0)
+                        if old['win']: bucket_stats[old['idx']] = max(1, bucket_stats[old['idx']] - 1)
+
+                    # Update Bot Curriculum Win Rate
+                    if is_bot_game:
+                        bot_match_history.append(1 if winner == bot_id else 0)
+                        if len(bot_match_history) > 100: bot_match_history.pop(0)
+                        bot_win_rate = sum(bot_match_history) / len(bot_match_history)
+
+                # Collect Rewards
                 for p in [1, 2]:
-                    if p == bot_id: continue # Don't learn from bot perspectives
+                    if p == bot_id: continue
                     p_moves = [m for m in game_hist if m['player'] == p]
                     base = REWARDS['win'] if winner == p else (-1.0 if winner is not None else REWARDS['draw'])
                     total_r = base + sum(m['t_bonus'] for m in p_moves)
@@ -153,6 +190,7 @@ def train():
             
             if len(memory) > MEMORY_CAPACITY: memory = memory[-MEMORY_CAPACITY:]
             
+            # Training Step
             if len(memory) >= BATCH_SIZE:
                 mini_batch = random.sample(memory, BATCH_SIZE)
                 states = torch.FloatTensor(np.array([x[0] for x in mini_batch])).to(device)
@@ -161,22 +199,32 @@ def train():
                 
                 current_q = model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
                 loss = loss_fn(current_q, rewards)
-                
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 
                 gen += PARALLEL_GAMES
                 if gen % 4 == 0:
-                    print(f"Gen {gen} | Loss: {loss.item():.4f} | Eps: {epsilon:.2f} | RAM: {len(memory)}")
+                    print(f"Gen {gen} | Loss: {loss.item():.4f} | Bot-Freq: {current_bot_freq:.1%} | RAM: {len(memory)}")
             
             if gen % 100 == 0:
-                torch.save(model.state_dict(), 'hex_brain.pt')
-                epsilon = max(0.05, epsilon * 0.995)
+                torch.save({
+                    'gen': gen,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'bucket_stats': bucket_stats,
+                    'bot_win_rate': bot_win_rate
+                }, 'hex_brain.pt')
 
     except KeyboardInterrupt:
-        print("\nSaving and Exiting...")
-        torch.save(model.state_dict(), 'hex_brain.pt')
+        print(f"\n💾 Saving Progress at Gen {gen}...")
+        torch.save({
+            'gen': gen,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'bucket_stats': bucket_stats,
+            'bot_win_rate': bot_win_rate
+        }, 'hex_brain.pt')
 
 if __name__ == "__main__":
     train()
