@@ -71,13 +71,14 @@ def export():
         if os.path.exists(tfjs_output_dir): shutil.rmtree(tfjs_output_dir)
         
         print("  > Phase A: ONNX to SavedModel...")
-        # NEW: --not_generate_tflite forces focus on SavedModel
+        # Use shorthand flags compatible with your version
+        import subprocess
         subprocess.run([
             "onnx2tf", 
             "-i", onnx_path, 
             "-o", saved_model_dir, 
-            "--not_generate_tflite",
-            "--non_verbose"
+            "-nlt",
+            "-v", "error"
         ], check=True)
 
         # 4. Search for the output
