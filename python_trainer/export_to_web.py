@@ -18,13 +18,10 @@ try:
     if not hasattr(tf.compat, 'v1'): tf.compat.v1 = types.ModuleType('v1')
     tf.compat.v1.estimator = mock_estimator
     sys.modules['tensorflow_hub'] = types.ModuleType('tensorflow_hub')
-    
-    # 3. Keras Legacy Patch (Satisfy onnx2tf[tensorflow])
     try:
         import tf_keras
         sys.modules['keras'] = tf_keras
-    except ImportError:
-        pass
+    except ImportError: pass
 except Exception as e:
     print(f"⚠️ Patching warning: {e}")
 
@@ -45,16 +42,16 @@ except ImportError:
     sys.exit(1)
 
 def export():
-    print("📦 Starting PyTorch to Web Conversion...")
+    print("📦 Starting MEMORY-SAFE PyTorch to Web Conversion...")
     
-    # 1. Load Model
+    # 1. Load Model (Force CPU to save GPU memory for conversion)
     model = DuelingDQN()
     checkpoint_path = 'hex_brain.pt'
     if not os.path.exists(checkpoint_path):
         print(f"❌ Error: {checkpoint_path} not found.")
         return
 
-    print(f"📂 Loading weights from {checkpoint_path}...")
+    print(f"📂 Loading weights into system RAM...")
     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -66,7 +63,14 @@ def export():
     print("🚀 Exporting to ONNX...")
     onnx_path = "hex_brain.onnx"
     dummy_input = torch.randn(1, INPUT_NODES)
-    torch.onnx.export(model, dummy_input, onnx_path, opset_version=12)
+    # Using a simpler export to save RAM
+    torch.onnx.export(model, dummy_input, onnx_path, opset_version=12, do_constant_folding=True)
+    
+    # CLEAR RAM: Delete PyTorch model immediately after ONNX is saved
+    del model
+    del checkpoint
+    import gc
+    gc.collect()
 
     # 3. Convert ONNX to SavedModel (Intermediate)
     saved_model_dir = "temp_saved_model"
@@ -77,16 +81,16 @@ def export():
         os.makedirs(saved_model_dir, exist_ok=True)
         if os.path.exists(tfjs_output_dir): shutil.rmtree(tfjs_output_dir)
         
-        print("  > Phase A: ONNX to SavedModel...")
-        # Force the 'tf_converter' backend to avoid the tflite-only 'flatbuffer_direct' path
-        import subprocess
+        print("  > Phase A: ONNX to SavedModel (RAM Intensive)...")
+        # We use simpler flags to reduce memory overhead during translation
         subprocess.run([
             "onnx2tf", 
             "-i", onnx_path, 
             "-o", saved_model_dir, 
-            "-tb", "tf_converter", # NEW: Force TF backend
-            "-osd",                # Output SavedModel
-            "-nlt",                # Not generate TFLite
+            "-tb", "tf_converter",
+            "-osd",
+            "-nlt",
+            "--not_use_onnxsim", # Skip optimization to save RAM
             "-v", "error"
         ], check=True)
 
@@ -99,31 +103,28 @@ def export():
                 break
         
         if not target_pb:
-            print(f"❌ Error: Could not find 'saved_model.pb' inside {saved_model_dir}")
-            print("Contents found:")
-            for root, dirs, files in os.walk(saved_model_dir):
-                print(f"  {root}: {files}")
+            print(f"❌ Error: Conversion failed to produce files.")
             return
 
-        print(f"  ✅ Found SavedModel at: {target_pb}")
-
-        # 5. Convert to TFJS
-        print("  > Phase B: SavedModel to TFJS...")
+        # 5. Convert to TFJS (Internal API)
+        print("  > Phase B: SavedModel to TFJS (Final Repack)...")
+        # Use sharding to keep browser memory usage low
         sys.argv = [
             'tensorflowjs_converter', 
             '--input_format=tf_saved_model', 
+            '--weight_shard_size_bytes=4194304', # 4MB shards
             target_pb, 
             tfjs_output_dir
         ]
         tfjs_converter()
 
-        print(f"\n✨ ALL DONE! Model saved to: {tfjs_output_dir}")
-        print("Action: Go to the website and click 'Sync Python Model'.")
+        print(f"\n✨ ALL DONE! Your massive brain is ready. ✨")
+        print(f"Model saved to: {tfjs_output_dir}")
 
     except Exception as e:
         print(f"\n❌ Conversion Error: {e}")
     finally:
-        # Cleanup
+        # Final Cleanup
         if os.path.exists(saved_model_dir): shutil.rmtree(saved_model_dir)
         if os.path.exists(onnx_path): os.remove(onnx_path)
 
