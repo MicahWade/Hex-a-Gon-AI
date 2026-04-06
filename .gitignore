@@ -13,6 +13,14 @@ dist-ssr
 *.local
 *.zip
 
+# Python environments
+.venv/
+venv/
+tf-env/
+__pycache__/
+*.py[cod]
+*$py.class
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
