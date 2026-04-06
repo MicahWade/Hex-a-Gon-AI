@@ -185,12 +185,57 @@ export const AITraining: React.FC<Props> = ({
   };
 
   const handleImportPython = async () => {
-    addLog("[System] Attempting to sync Python model...");
+    addLog("[System] Initializing Raw Weight Sync...");
     try {
-      const model = await tf.loadLayersModel('/python_model/model.json');
-      // Wrap in vault-compatible metadata
-      const name = "python-imported-brain";
+      // 1. Fetch the manifest
+      const manifestRes = await fetch('/python_model/manifest.json');
+      if (!manifestRes.ok) throw new Error("Manifest not found");
+      const manifest = await manifestRes.json();
+
+      // 2. Build the Model Architecture manually in TFJS
       const { inputNodes, outputNodes } = getIOConfig();
+      const model = tf.sequential();
+      
+      // Feature Layers (Standardized 7x3500)
+      model.add(tf.layers.dense({ units: 3500, activation: 'relu', inputShape: [inputNodes], name: 'dense_0' }));
+      for (let i = 1; i < 7; i++) {
+        model.add(tf.layers.dense({ units: 3500, activation: 'relu', name: `dense_${i}` }));
+      }
+      // Dueling Head (Simplified combined output for loading)
+      model.add(tf.layers.dense({ units: outputNodes, activation: 'linear', name: 'output_head' }));
+
+      // 3. Inject Weights Layer-by-Layer
+      addLog("[System] Injecting weights into neurons...");
+      
+      const loadLayer = async (layerName: string, weightFile: string, biasFile: string, weightShape: number[], biasShape: number[]) => {
+        const [wRes, bRes] = await Promise.all([
+          fetch(`/python_model/${weightFile}`),
+          fetch(`/python_model/${biasFile}`)
+        ]);
+        const [wBuf, bBuf] = await Promise.all([wRes.arrayBuffer(), bRes.arrayBuffer()]);
+        
+        const layer = model.getLayer(layerName);
+        layer.setWeights([
+          tf.tensor(new Float32Array(wBuf), weightShape),
+          tf.tensor(new Float32Array(bBuf), biasShape)
+        ]);
+      };
+
+      // Load Feature Weights
+      for (let i = 0; i < 7; i++) {
+        const wInfo = manifest.find((m: any) => m.name === `feature_${i}_w`);
+        const bInfo = manifest.find((m: any) => m.name === `feature_${i}_b`);
+        await loadLayer(`dense_${i}`, wInfo.file, bInfo.file, wInfo.shape, bInfo.shape);
+      }
+
+      // Load Output Head (Combination of Advantage + Value from Python)
+      // Note: In this raw injection, we treat the final layer as a single dense layer
+      const awInfo = manifest.find((m: any) => m.name === `advantage_w`);
+      const abInfo = manifest.find((m: any) => m.name === `advantage_b`);
+      await loadLayer('output_head', awInfo.file, abInfo.file, awInfo.shape, abInfo.shape);
+
+      // 4. Save to Vault
+      const name = "python-raw-brain";
       const meta: ModelMetadata = {
         name, timestamp: Date.now(), inputNodes, outputNodes, 
         hiddenLayers: [3500, 3500, 3500, 3500, 3500, 3500, 3500],
@@ -198,7 +243,6 @@ export const AITraining: React.FC<Props> = ({
         parallelGames: 1
       };
       
-      // Save to IndexedDB so it appears in the list
       await model.save(`indexeddb://${name}`);
       const vaultData = getVaultMetadata();
       const index = vaultData.findIndex(m => m.name === name);
@@ -206,9 +250,10 @@ export const AITraining: React.FC<Props> = ({
       localStorage.setItem('hexagon-model-vault-metadata', JSON.stringify(vaultData));
       
       setVault(getVaultMetadata());
-      addLog("[System] Python brain synced to Vault!");
+      addLog("[System] GPU Brain injected successfully!");
     } catch (e) {
-      addLog("[Error] No model found in public/python_model/ folder.");
+      console.error(e);
+      addLog("[Error] Sync failed. Run 'python export_raw.py' first.");
     }
   };
 
