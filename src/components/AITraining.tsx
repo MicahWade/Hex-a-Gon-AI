@@ -269,8 +269,8 @@ export const AITraining: React.FC<Props> = ({
       const stats = bucketStatsRef.current;
       const rawTotal = stats.reduce((a, b) => a + b, 0);
       
-      // Calculate weights with a 2.5% minimum floor
-      const minWeight = rawTotal * 0.025; 
+      // Calculate weights with a 10% minimum floor
+      const minWeight = rawTotal * 0.10; 
       const flooredStats = stats.map(s => Math.max(s, minWeight));
       const totalWeight = flooredStats.reduce((a, b) => a + b, 0);
 
@@ -469,7 +469,7 @@ export const AITraining: React.FC<Props> = ({
             <div className="epsilon-pulse-grid" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px'}}>
               {EPSILON_BUCKETS.map((val, i) => {
                 const rawTotal = visibleBucketStats.reduce((a,b)=>a+b,0);
-                const minWeight = rawTotal * 0.025;
+                const minWeight = rawTotal * 0.10; // 10% UI Floor
                 const flooredStats = visibleBucketStats.map(s => Math.max(s, minWeight));
                 const totalWithFloor = flooredStats.reduce((a,b)=>a+b,0);
                 const percentage = Math.round((flooredStats[i] / totalWithFloor) * 100);

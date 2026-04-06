@@ -148,9 +148,13 @@ def train():
             current_bot_freq = 0.025 + (bot_win_rate * (0.20 - 0.025))
             
             for _ in range(PARALLEL_GAMES):
-                # Adaptive Epsilon Selection (The Pulse)
-                total_w = sum(bucket_stats)
-                weights = [s/total_w for s in bucket_stats]
+                # Adaptive Epsilon Selection (The Pulse with 10% Floor)
+                raw_total = sum(bucket_stats)
+                min_w = raw_total * 0.10 # 10% Floor
+                floored_stats = [max(s, min_w) for s in bucket_stats]
+                
+                total_w = sum(floored_stats)
+                weights = [s/total_w for s in floored_stats]
                 bucket_idx = np.random.choice(len(EPSILON_BUCKETS), p=weights)
                 chosen_epsilon = EPSILON_BUCKETS[bucket_idx]
 
