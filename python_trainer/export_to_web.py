@@ -47,7 +47,7 @@ def export():
         print(f"❌ Error: {checkpoint_path} not found.")
         return
 
-    print(f"📂 Loading weights...")
+    print(f"📂 Loading weights from {checkpoint_path}...")
     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -67,40 +67,42 @@ def export():
 
     try:
         if os.path.exists(saved_model_dir): shutil.rmtree(saved_model_dir)
+        os.makedirs(saved_model_dir, exist_ok=True)
         if os.path.exists(tfjs_output_dir): shutil.rmtree(tfjs_output_dir)
         
         print("  > Phase A: ONNX to SavedModel...")
-        # Force SavedModel output explicitly
+        # NEW: --not_generate_tflite forces focus on SavedModel
         subprocess.run([
             "onnx2tf", 
             "-i", onnx_path, 
             "-o", saved_model_dir, 
+            "--not_generate_tflite",
             "--non_verbose"
         ], check=True)
 
-        # Verify SavedModel existence
-        # onnx2tf sometimes puts it in a subfolder or creates the file directly
-        if not os.path.exists(os.path.join(saved_model_dir, "saved_model.pb")):
-            # Look for subfolders (common in newer onnx2tf)
-            found = False
+        # 4. Search for the output
+        print("  🔍 Scanning for generated files...")
+        target_pb = None
+        for root, dirs, files in os.walk(saved_model_dir):
+            if "saved_model.pb" in files:
+                target_pb = root
+                break
+        
+        if not target_pb:
+            print(f"❌ Error: Could not find 'saved_model.pb' inside {saved_model_dir}")
+            print("Contents found:")
             for root, dirs, files in os.walk(saved_model_dir):
-                if "saved_model.pb" in files:
-                    print(f"  🔍 Found SavedModel in subfolder: {root}")
-                    # Move everything up to the main temp_saved_model dir
-                    for f in files: shutil.move(os.path.join(root, f), saved_model_dir)
-                    for d in dirs: shutil.move(os.path.join(root, d), saved_model_dir)
-                    found = True
-                    break
-            if not found:
-                print("❌ Error: onnx2tf failed to create a valid SavedModel directory.")
-                return
+                print(f"  {root}: {files}")
+            return
 
-        # 4. Convert SavedModel to TFJS (Internal API)
+        print(f"  ✅ Found SavedModel at: {target_pb}")
+
+        # 5. Convert to TFJS
         print("  > Phase B: SavedModel to TFJS...")
         sys.argv = [
             'tensorflowjs_converter', 
             '--input_format=tf_saved_model', 
-            saved_model_dir, 
+            target_pb, 
             tfjs_output_dir
         ]
         tfjs_converter()
