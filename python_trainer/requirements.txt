@@ -1,12 +1,13 @@
-# Explicit TensorFlow version requested
-tensorflow==2.21.0
+# PyTorch for AMD GPU (ROCm)
+torch
+torchvision
+torchaudio
 
-# ========================================================
-# 🛑 AMD GPU INSTALLATION (Linux / Fedora) 🛑
-# ========================================
-# For AMD GPUs on Linux, you should use the ROCm version.
-# pip install tensorflow-rocm
-# ========================================================
+# Conversion tools
+onnx
+onnx2tf
+tensorflow-cpu
+tensorflowjs
 
+# Standard utilities
 numpy
-keras-tuner
