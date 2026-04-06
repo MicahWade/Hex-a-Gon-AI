@@ -120,17 +120,23 @@ def train():
     
     if os.path.exists('hex_brain.pt'):
         print("📂 Loading saved checkpoint...")
-        checkpoint = torch.load('hex_brain.pt', map_location=device, weights_only=False)
-        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'])
-            try: optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            except: pass
-            gen = checkpoint.get('gen', 0)
-            bucket_stats = checkpoint.get('bucket_stats', [1, 1, 1, 1])
-            bot_win_rate = checkpoint.get('bot_win_rate', 1.0)
-        else:
-            model.load_state_dict(checkpoint)
-        print(f"✅ Resumed at Gen {gen}")
+        try:
+            checkpoint = torch.load('hex_brain.pt', map_location=device, weights_only=False)
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+                try: optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                except: pass
+                gen = checkpoint.get('gen', 0)
+                bucket_stats = checkpoint.get('bucket_stats', [1, 1, 1, 1])
+                bot_win_rate = checkpoint.get('bot_win_rate', 1.0)
+            else:
+                model.load_state_dict(checkpoint)
+            print(f"✅ Resumed at Gen {gen}")
+        except Exception as e:
+            print(f"❌ Error: Saved brain 'hex_brain.pt' is corrupted or invalid: {e}")
+            print("🆕 Initializing a fresh brain to continue training...")
+    else:
+        print("🆕 No saved model found. Initializing new brain.")
 
     loss_fn = nn.MSELoss()
     encoder = Encoder()
