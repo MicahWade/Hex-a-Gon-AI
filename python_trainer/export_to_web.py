@@ -1,6 +1,7 @@
 import numpy as np
-# MUST patch before any other imports
 import builtins
+
+# 1. NumPy Legacy Patch
 if not hasattr(np, 'object'):
     np.object = builtins.object
 if not hasattr(np, 'bool'):
@@ -8,11 +9,21 @@ if not hasattr(np, 'bool'):
 if not hasattr(np, 'float'):
     np.float = builtins.float
 
+import tensorflow as tf
+import sys
+
+# 2. TensorFlow Estimator Patch (Fixes the hub/estimator error)
+try:
+    import tensorflow_estimator
+    if not hasattr(tf.compat.v1, 'estimator'):
+        tf.compat.v1.estimator = tensorflow_estimator.estimator
+except ImportError:
+    pass
+
 import torch
 import torch.nn as nn
 import os
 import shutil
-import sys
 
 # Import the model structure from train.py
 from train import DuelingDQN, INPUT_NODES, OUTPUT_NODES
@@ -74,7 +85,7 @@ def export():
         if os.path.exists(saved_model_dir): shutil.rmtree(saved_model_dir)
         if os.path.exists(tfjs_output_dir): shutil.rmtree(tfjs_output_dir)
         
-        # ONNX -> SavedModel (We still use subprocess for onnx2tf as it is a pure CLI tool)
+        # ONNX -> SavedModel
         print("  > Phase A: ONNX to SavedModel...")
         import subprocess
         subprocess.run([
@@ -84,10 +95,9 @@ def export():
             "--non_verbose"
         ], check=True)
 
-        # SavedModel -> TFJS (Running INTERNALLY to use our NumPy patch)
+        # SavedModel -> TFJS
         print("  > Phase B: SavedModel to TFJS...")
         
-        # Manually construct the CLI arguments for the internal function
         sys.argv = [
             'tensorflowjs_converter',
             '--input_format=tf_saved_model',
@@ -95,7 +105,6 @@ def export():
             tfjs_output_dir
         ]
         
-        # This calls the converter code while respecting our monkey-patched NumPy
         tfjs_converter()
 
         print(f"\n✨ ALL DONE! ✨")
