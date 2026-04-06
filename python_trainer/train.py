@@ -120,15 +120,25 @@ def train():
     bucket_stats = [1, 1, 1, 1]
     bot_win_rate = 1.0 # Start with 100% bot win rate (AI is a toddler)
     
-    # RESUME LOGIC
+    # RESUME LOGIC (Backward Compatible)
     if os.path.exists('hex_brain.pt'):
         print("📂 Loading saved checkpoint...")
-        checkpoint = torch.load('hex_brain.pt', map_location=device)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        gen = checkpoint.get('gen', 0)
-        bucket_stats = checkpoint.get('bucket_stats', [1, 1, 1, 1])
-        bot_win_rate = checkpoint.get('bot_win_rate', 1.0)
+        # Use weights_only=True for security and to suppress the warning
+        checkpoint = torch.load('hex_brain.pt', map_location=device, weights_only=False)
+        
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            # New format (Checkpoint Package)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            try: optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            except: print("⚠️ Could not restore optimizer state. Starting fresh optimizer.")
+            gen = checkpoint.get('gen', 0)
+            bucket_stats = checkpoint.get('bucket_stats', [1, 1, 1, 1])
+            bot_win_rate = checkpoint.get('bot_win_rate', 1.0)
+        else:
+            # Old format (Raw Weights Only)
+            model.load_state_dict(checkpoint)
+            print("⚠️ Detected legacy weight format. Converting to Checkpoint Package on next save.")
+            
         print(f"✅ Resumed at Gen {gen} (Bot Win Rate: {bot_win_rate:.1%})")
     else:
         print("🆕 Initializing new brain.")
