@@ -1,24 +1,32 @@
-import numpy as np
-import builtins
-
-# 1. NumPy Legacy Patch
-if not hasattr(np, 'object'):
-    np.object = builtins.object
-if not hasattr(np, 'bool'):
-    np.bool = builtins.bool
-if not hasattr(np, 'float'):
-    np.float = builtins.float
-
-import tensorflow as tf
 import sys
+import types
 
-# 2. TensorFlow Estimator Patch (Fixes the hub/estimator error)
+# 1. HARD-INJECTION PATCH
+# This must happen before ANY other imports
 try:
-    import tensorflow_estimator
-    if not hasattr(tf.compat.v1, 'estimator'):
-        tf.compat.v1.estimator = tensorflow_estimator.estimator
+    import numpy as np
+    if not hasattr(np, 'object'): np.object = object
+    if not hasattr(np, 'bool'): np.bool = bool
+    if not hasattr(np, 'float'): np.float = float
 except ImportError:
     pass
+
+try:
+    import tensorflow as tf
+    import tensorflow_estimator
+    
+    # Create a fake module structure to satisfy Hub
+    estimator_module = tensorflow_estimator.estimator
+    sys.modules['tensorflow.compat.v1.estimator'] = estimator_module
+    
+    # Force bind the attribute even if it's a wrapped module
+    try:
+        tf.compat.v1.estimator = estimator_module
+    except:
+        # Fallback for strict wrappers: inject into __dict__
+        setattr(tf.compat.v1, 'estimator', estimator_module)
+except Exception as e:
+    print(f"⚠️ Warning during patching: {e}")
 
 import torch
 import torch.nn as nn
@@ -28,7 +36,7 @@ import shutil
 # Import the model structure from train.py
 from train import DuelingDQN, INPUT_NODES, OUTPUT_NODES
 
-# Import the converter's main function directly
+# Now import the converter
 try:
     from tensorflowjs.converters.converter import pip_main as tfjs_converter
 except ImportError:
@@ -97,7 +105,6 @@ def export():
 
         # SavedModel -> TFJS
         print("  > Phase B: SavedModel to TFJS...")
-        
         sys.argv = [
             'tensorflowjs_converter',
             '--input_format=tf_saved_model',
