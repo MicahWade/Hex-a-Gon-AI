@@ -6,6 +6,7 @@ torchaudio
 # Conversion tools
 onnx
 onnx2tf
+tf_keras
 tensorflow-cpu
 tensorflowjs
 

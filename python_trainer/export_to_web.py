@@ -18,6 +18,13 @@ try:
     if not hasattr(tf.compat, 'v1'): tf.compat.v1 = types.ModuleType('v1')
     tf.compat.v1.estimator = mock_estimator
     sys.modules['tensorflow_hub'] = types.ModuleType('tensorflow_hub')
+    
+    # 3. Keras Legacy Patch (Satisfy onnx2tf[tensorflow])
+    try:
+        import tf_keras
+        sys.modules['keras'] = tf_keras
+    except ImportError:
+        pass
 except Exception as e:
     print(f"⚠️ Patching warning: {e}")
 
