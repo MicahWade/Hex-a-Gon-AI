@@ -71,13 +71,14 @@ def export():
         if os.path.exists(tfjs_output_dir): shutil.rmtree(tfjs_output_dir)
         
         print("  > Phase A: ONNX to SavedModel...")
-        # Use shorthand flags compatible with your version
+        # Use explicit SavedModel and TF-Converter flags
         import subprocess
         subprocess.run([
             "onnx2tf", 
             "-i", onnx_path, 
             "-o", saved_model_dir, 
-            "-nlt",
+            "-osd", # NEW: Force Output SavedModel
+            "-nlt", # Not generate TFLite
             "-v", "error"
         ], check=True)
 
